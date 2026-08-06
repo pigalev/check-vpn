@@ -1,0 +1,13 @@
+{
+  "name": "check-vpn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "validate": "node scripts/validate-static.mjs",
+    "build": "node scripts/build-site.mjs",
+    "check": "npm run test && npm run validate && npm run build"
+  },
+  "engines": { "node": ">=22" }
+}

@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { assessResults } from '../assets/assessment.js';
+const completeIp = (family, address) => ({ status: 'complete', family, address, error: null });
+test('reports no mismatch when WebRTC matches HTTP addresses', () => { const result = assessResults({ ipv4: completeIp(4, '203.0.113.10'), ipv6: { status: 'unavailable', family: 6, address: null, error: null }, webrtc: { status: 'complete', publicAddresses: ['203.0.113.10'], candidates: [], error: null } }); assert.deepEqual(result, { status: 'ok', message: 'No public address mismatch detected.', mismatchedAddresses: [] }); });
+test('warns when WebRTC exposes a different public address', () => { const result = assessResults({ ipv4: completeIp(4, '203.0.113.10'), ipv6: { status: 'unavailable', family: 6, address: null, error: null }, webrtc: { status: 'complete', publicAddresses: ['198.51.100.25'], candidates: [], error: null } }); assert.equal(result.status, 'warning'); assert.deepEqual(result.mismatchedAddresses, ['198.51.100.25']); });
+test('qualifies incomplete results', () => { const result = assessResults({ ipv4: { status: 'unavailable', family: 4, address: null, error: null }, ipv6: { status: 'unavailable', family: 6, address: null, error: null }, webrtc: { status: 'unavailable', publicAddresses: [], candidates: [], error: null } }); assert.equal(result.status, 'incomplete'); });

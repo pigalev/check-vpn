@@ -30,6 +30,16 @@ const required = [
   'assets/aggressive-leak-test.js',
   'assets/aggressive-leak-enrichment.js',
   'assets/aggressive-leak-render.js',
+  'assets/guided-leak-profile.js',
+  'assets/provider-observations.js',
+  'assets/guided-leak-capture.js',
+  'assets/leak-classifier.js',
+  'assets/reconnect-burst.js',
+  'assets/webrtc-stress.js',
+  'assets/webrtc-media-test.js',
+  'assets/leak-report.js',
+  'assets/guided-leak-render.js',
+  'assets/guided-app-runtime.js',
   'assets/assessment.js',
   'assets/app.js'
 ];
@@ -39,9 +49,26 @@ for (const file of required) await access(resolve(root, file));
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
 if (!html.includes('./assets/styles.css') || !html.includes('./assets/app.js')) throw new Error('index.html must reference styles.css and app.js');
 if (!html.includes('advanced-details') || !html.includes('monitor-toggle') || !html.includes('aggressive-toggle')) throw new Error('Max diagnostics controls are missing');
+
+const guidedIds = [
+  'guided-section', 'guided-step', 'guided-instructions', 'guided-real', 'guided-vpn',
+  'guided-primary', 'guided-secondary', 'guided-clear', 'guided-result', 'guided-exposures',
+  'guided-paths', 'guided-coverage', 'media-webrtc-button', 'media-webrtc-status', 'media-webrtc-result'
+];
+for (const id of guidedIds) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`Guided leak control is missing: ${id}`);
+}
+
+const moduleScripts = [...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*src=["']([^"']+)["'][^>]*>/gi)].map((match) => match[1]);
+if (moduleScripts.length !== 1 || moduleScripts[0] !== './assets/app.js') throw new Error('index.html must load only ./assets/app.js as the module entry');
+
 for (const forbidden of ['Backend required', 'Coming soon', 'DNS leak test', 'Torrent leak test', 'Email leak test']) {
   if (html.includes(forbidden)) throw new Error(`Forbidden placeholder found: ${forbidden}`);
 }
+
+const guidedProfileSource = await readFile(resolve(root, 'assets/guided-leak-profile.js'), 'utf8');
+if (/\blocalStorage\b/.test(guidedProfileSource)) throw new Error('Guided leak profile must not use localStorage');
+if (!/\bsessionStorage\b/.test(guidedProfileSource)) throw new Error('Guided leak profile must use current-tab sessionStorage by default');
 
 const importPattern = /from\s+['"](\.\/.+?)['"]/g;
 for (const file of required.filter((name) => name.endsWith('.js'))) {

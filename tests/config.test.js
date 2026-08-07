@@ -24,6 +24,8 @@ test('network endpoints and timeouts are configured', () => {
     assert.match(provider.urlTemplate, /\{ip\}/);
     assert.equal(typeof provider.kind, 'string');
   }
+  const freeIpApi = networkConfig.geoIpProviders.find((provider) => provider.id === 'freeipapi');
+  assert.match(freeIpApi.urlTemplate, /^https:\/\/free\.freeipapi\.com\/api\/json\//);
   assert.ok(networkConfig.stunUrls.every((url) => url.startsWith('stun:')));
   assert.ok(networkConfig.requestTimeoutMs >= 3000);
   assert.ok(networkConfig.geoIpTimeoutMs >= 3000);

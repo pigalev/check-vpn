@@ -57,7 +57,8 @@ export const networkConfig = Object.freeze({
   geoIpProviders: Object.freeze([
     Object.freeze({ id: 'ipapi', label: 'ipapi.co', kind: 'ipapi', urlTemplate: 'https://ipapi.co/{ip}/json/' }),
     Object.freeze({ id: 'ipwhois', label: 'ipwho.is', kind: 'ipwhois', urlTemplate: 'https://ipwho.is/{ip}' }),
-    Object.freeze({ id: 'freeipapi', label: 'FreeIPAPI', kind: 'freeipapi', urlTemplate: 'https://free.freeipapi.com/api/json/{ip}' })
+    Object.freeze({ id: 'freeipapi', label: 'FreeIPAPI', kind: 'freeipapi', urlTemplate: 'https://free.freeipapi.com/api/json/{ip}' }),
+    Object.freeze({ id: 'ipapiis', label: 'ipapi.is', kind: 'ipapiis', urlTemplate: 'https://api.ipapi.is/?q={ip}' })
   ]),
   intelligenceUrlTemplate: 'https://api.ipapi.is/?q={ip}',
   dohResolvers: Object.freeze([

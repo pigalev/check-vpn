@@ -50,6 +50,22 @@
         <div id="monitor-timeline" class="monitor-timeline"></div>
       </section>
 
+      <section id="aggressive-section" class="monitor-shell aggressive-shell" aria-labelledby="aggressive-heading">
+        <div class="monitor-header">
+          <div>
+            <p class="eyebrow">High-frequency leak test</p>
+            <h2 id="aggressive-heading">Aggressive Leak Test</h2>
+            <p class="card-detail">For 60 seconds, repeatedly compare IPv4/IPv6 HTTP, STUN, echo and TLS paths while you disconnect or reconnect the VPN. This mode sends frequent third-party requests only while the test is running.</p>
+          </div>
+          <button id="aggressive-toggle" class="primary-button" type="button">Start 60s test</button>
+        </div>
+        <div id="aggressive-status" class="monitor-status">Not running</div>
+        <div id="aggressive-progress" class="aggressive-progress" aria-live="polite"></div>
+        <div id="aggressive-summary" class="aggressive-summary"></div>
+        <div id="aggressive-exposures" class="aggressive-exposures"></div>
+        <div id="aggressive-timeline" class="monitor-timeline"></div>
+      </section>
+
       <div class="report-actions">
         <button id="copy-json" class="secondary-button" type="button" disabled>Copy JSON</button>
       </div>

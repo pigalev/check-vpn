@@ -11,9 +11,14 @@ export function createMonitorState() {
   return { running: false, startedAt: null, sampleCount: 0, baseline: { 4: null, 6: null }, current: { 4: null, 6: null }, events: [] };
 }
 
+function eventId(timestamp, family, previousAddress, address, index) {
+  return `${timestamp}|${family}|${previousAddress ?? 'none'}|${address ?? 'none'}|${index}`;
+}
+
 export function reduceMonitorState(state, action) {
   if (action.type === 'start') return { ...createMonitorState(), running: true, startedAt: action.timestamp };
   if (action.type === 'stop') return { ...state, running: false };
+  if (action.type === 'replace-event') return { ...state, events: state.events.map((event) => event.id === action.event?.id ? action.event : event) };
   if (action.type !== 'sample') return state;
 
   const observed = addressMap(action.sample);
@@ -26,7 +31,9 @@ export function reduceMonitorState(state, action) {
     if (address === undefined) continue;
     const previousAddress = state.current[family];
     if (state.sampleCount === 0) baseline[family] = address;
-    else if (previousAddress !== address) events.push({ timestamp: action.timestamp, family, previousAddress, address });
+    else if (previousAddress !== address) {
+      events.push({ id: eventId(action.timestamp, family, previousAddress, address, events.length), timestamp: action.timestamp, family, previousAddress, address, enrichmentStatus: 'pending' });
+    }
     next[family] = address;
   }
 
@@ -35,7 +42,8 @@ export function reduceMonitorState(state, action) {
 
 export function monitorFindings(state) {
   if (!state.events.length) return [];
-  return [{ id: 'monitor-ip-change', severity: 'leak', category: 'monitor', summary: 'Public IP changed during monitoring', details: `${state.events.length} address change event(s) were observed.`, sources: ['kill-switch-monitor'] }];
+  const possibleIsp = state.events.some((event) => event.transitionLabel === 'Possible ISP exposure');
+  return [{ id: 'monitor-ip-change', severity: 'leak', category: 'monitor', summary: possibleIsp ? 'Possible ISP exposure during monitoring' : 'Public IP changed during monitoring', details: `${state.events.length} address change event(s) were observed.`, sources: ['kill-switch-monitor'] }];
 }
 
 export function createIpMonitor({ sample, intervalMs = 5000, now = () => new Date().toISOString(), setIntervalImpl = setInterval, clearIntervalImpl = clearInterval, onUpdate = () => {} }) {
@@ -49,6 +57,7 @@ export function createIpMonitor({ sample, intervalMs = 5000, now = () => new Dat
   };
   return {
     getState: () => state,
+    replaceEvent(event) { state = reduceMonitorState(state, { type: 'replace-event', event }); emit(); },
     async start() {
       if (state.running) return;
       state = reduceMonitorState(state, { type: 'start', timestamp: now() }); emit();

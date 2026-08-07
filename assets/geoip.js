@@ -66,6 +66,30 @@ export function normalizeGeoIp(payload, expectedIp, kind = 'ipapi', source = {})
       org: payload.asnOrganization ?? payload.organization ?? payload.isp,
       timezone: payload.timeZone ?? (Array.isArray(payload.timeZones) ? payload.timeZones[0] : null)
     };
+  } else if (kind === 'ipapiis') {
+    if (payload.error === true) return emptyResult(expectedIp, 'error', cleanString(payload.message) ?? 'Location lookup failed.', source);
+    const location = payload.location ?? {};
+    const network = typeof payload.asn === 'object' && payload.asn ? payload.asn : {};
+    data = {
+      countryCode: location.country_code,
+      country: location.country,
+      region: location.state ?? location.region,
+      city: location.city,
+      asn: network.asn ?? payload.asn,
+      org: network.org ?? payload.company?.name,
+      timezone: location.timezone
+    };
+  } else if (kind === 'sypex') {
+    if (payload.error === true) return emptyResult(expectedIp, 'error', cleanString(payload.message) ?? 'Location lookup failed.', source);
+    data = {
+      countryCode: payload.country?.iso,
+      country: payload.country?.name_en ?? payload.country?.name_ru,
+      region: payload.region?.name_en ?? payload.region?.name_ru,
+      city: payload.city?.name_en ?? payload.city?.name_ru,
+      asn: payload.asn,
+      org: payload.org,
+      timezone: payload.city?.timezone ?? payload.region?.timezone
+    };
   } else {
     if (payload.error === true) return emptyResult(expectedIp, 'error', cleanString(payload.reason) ?? 'Location lookup failed.', source);
     data = {
@@ -149,10 +173,7 @@ function metadataTuple(result) {
   ].map((value) => String(value).trim().toLowerCase()).join('|');
 }
 
-export async function runGeoIpConsensus({ ip, providers, timeoutMs, fetchImpl = fetch }) {
-  const sources = await Promise.all(
-    providers.map((provider) => runGeoIpProviderLookup({ ip, provider, timeoutMs, fetchImpl }))
-  );
+function buildGeoIpConsensusResult(ip, providers, sources) {
   const successful = sources.filter((result) => result.status === 'complete');
   const available = successful.length;
   const total = providers.length;
@@ -209,6 +230,27 @@ export async function runGeoIpConsensus({ ip, providers, timeoutMs, fetchImpl = 
     differences,
     error: null
   };
+}
+
+export function hasUsableGeoLocation(result) {
+  return result?.status === 'complete' && Boolean(result.countryCode || result.country || result.region || result.city);
+}
+
+export async function runGeoIpConsensusProgressive({ ip, providers, timeoutMs, fetchImpl = fetch, onFirstUsable = null }) {
+  let emitted = false;
+  const promises = providers.map(async (provider) => {
+    const result = await runGeoIpProviderLookup({ ip, provider, timeoutMs, fetchImpl });
+    if (!emitted && hasUsableGeoLocation(result)) {
+      emitted = true;
+      onFirstUsable?.(result);
+    }
+    return result;
+  });
+  return buildGeoIpConsensusResult(ip, providers, await Promise.all(promises));
+}
+
+export function runGeoIpConsensus(args) {
+  return runGeoIpConsensusProgressive(args);
 }
 
 // Backward-compatible single-provider wrapper for callers outside the current UI.

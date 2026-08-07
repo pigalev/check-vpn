@@ -1,0 +1,31 @@
+.guided-shell { margin-top: 1rem; }
+.guided-header { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; }
+.guided-step { font-size: .82rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .72; }
+.guided-privacy { margin-top: .55rem; font-size: .9rem; opacity: .8; }
+.guided-controls { display: flex; gap: .65rem; flex-wrap: wrap; margin-top: 1rem; }
+.guided-connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
+.guided-connection-card { min-width: 0; padding: .9rem; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: .75rem; }
+.guided-card-title, .guided-exposure-title { font-weight: 700; }
+.guided-address, .guided-exposure-address, .guided-path-address { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.guided-address { margin-top: .4rem; }
+.guided-result, .guided-exposures, .guided-paths, .guided-coverage { margin-top: .9rem; }
+.guided-verdict { font-weight: 800; letter-spacing: .02em; }
+.guided-verdict-real-leak, .guided-path-known-real { color: var(--danger, #ff7b7b); }
+.guided-verdict-unexpected-leak { color: var(--danger, #ff7b7b); }
+.guided-verdict-review, .guided-verdict-inconclusive { color: var(--warning, #f0c36a); }
+.guided-exposure { min-width: 0; margin-top: .65rem; padding: .8rem; border: 1px solid var(--border, rgba(255,255,255,.12)); border-radius: .7rem; }
+.guided-exposure-known-real { border-color: currentColor; }
+.guided-meta, .guided-reason { margin-top: .35rem; font-size: .9rem; opacity: .82; overflow-wrap: anywhere; }
+.guided-paths { display: grid; gap: .45rem; }
+.guided-path-row { min-width: 0; display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 1.3fr) minmax(8rem, .8fr); gap: .65rem; align-items: center; padding: .55rem .65rem; border: 1px solid var(--border, rgba(255,255,255,.1)); border-radius: .55rem; }
+.guided-path-label, .guided-path-relation { min-width: 0; overflow-wrap: anywhere; }
+.guided-path-known-vpn { opacity: .8; }
+.guided-media { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border, rgba(255,255,255,.12)); }
+.guided-media-copy { max-width: 52rem; }
+.guided-media-candidate { margin-top: .35rem; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+@media (max-width: 720px) {
+  .guided-header { display: block; }
+  .guided-connection-grid { grid-template-columns: 1fr; }
+  .guided-path-row { grid-template-columns: 1fr; gap: .2rem; }
+  .guided-controls > button { width: 100%; }
+}

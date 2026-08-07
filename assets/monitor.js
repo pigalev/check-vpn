@@ -1,5 +1,10 @@
+function observedAddress(result) {
+  if (!result || result.status !== 'complete') return undefined;
+  return result.address ?? null;
+}
+
 function addressMap(sample) {
-  return { 4: sample?.ipv4?.address ?? null, 6: sample?.ipv6?.address ?? null };
+  return { 4: observedAddress(sample?.ipv4), 6: observedAddress(sample?.ipv6) };
 }
 
 export function createMonitorState() {
@@ -10,16 +15,21 @@ export function reduceMonitorState(state, action) {
   if (action.type === 'start') return { ...createMonitorState(), running: true, startedAt: action.timestamp };
   if (action.type === 'stop') return { ...state, running: false };
   if (action.type !== 'sample') return state;
-  const next = addressMap(action.sample);
-  const baseline = state.sampleCount === 0 ? { ...next } : state.baseline;
+
+  const observed = addressMap(action.sample);
+  const next = { ...state.current };
+  const baseline = { ...state.baseline };
   const events = [...state.events];
-  if (state.sampleCount > 0) {
-    for (const family of [4, 6]) {
-      const previousAddress = state.current[family];
-      const address = next[family];
-      if (previousAddress !== address) events.push({ timestamp: action.timestamp, family, previousAddress, address });
-    }
+
+  for (const family of [4, 6]) {
+    const address = observed[family];
+    if (address === undefined) continue;
+    const previousAddress = state.current[family];
+    if (state.sampleCount === 0) baseline[family] = address;
+    else if (previousAddress !== address) events.push({ timestamp: action.timestamp, family, previousAddress, address });
+    next[family] = address;
   }
+
   return { ...state, sampleCount: state.sampleCount + 1, baseline, current: next, events };
 }
 
@@ -34,7 +44,7 @@ export function createIpMonitor({ sample, intervalMs = 5000, now = () => new Dat
   const emit = () => onUpdate(state);
   const takeSample = async () => {
     try { state = reduceMonitorState(state, { type: 'sample', timestamp: now(), sample: await sample() }); }
-    catch { state = reduceMonitorState(state, { type: 'sample', timestamp: now(), sample: {} }); }
+    catch { state = { ...state, sampleCount: state.sampleCount + 1 }; }
     emit();
   };
   return {

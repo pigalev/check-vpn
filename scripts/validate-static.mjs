@@ -6,6 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const required = [
   'index.html',
   'assets/styles.css',
+  'assets/dashboard.css',
   'assets/config.js',
   'assets/network.js',
   'assets/ip-classification.js',
@@ -40,6 +41,7 @@ const required = [
   'assets/leak-report.js',
   'assets/guided-leak-render.js',
   'assets/guided-app-runtime.js',
+  'assets/dashboard-view.js',
   'assets/assessment.js',
   'assets/app.js'
 ];
@@ -47,8 +49,18 @@ const required = [
 for (const file of required) await access(resolve(root, file));
 
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
-if (!html.includes('./assets/styles.css') || !html.includes('./assets/app.js')) throw new Error('index.html must reference styles.css and app.js');
-if (!html.includes('advanced-details') || !html.includes('monitor-toggle') || !html.includes('aggressive-toggle')) throw new Error('Max diagnostics controls are missing');
+if (!html.includes('./assets/styles.css') || !html.includes('./assets/dashboard.css') || !html.includes('./assets/app.js')) {
+  throw new Error('index.html must reference styles.css, dashboard.css and app.js');
+}
+
+const dashboardIds = [
+  'dashboard', 'connection-panel', 'connection-body', 'leak-panel', 'leak-body',
+  'privacy-panel', 'privacy-body', 'advanced-details', 'active-tests',
+  'guided-test-disclosure', 'monitor-test-disclosure', 'aggressive-test-disclosure'
+];
+for (const id of dashboardIds) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`Compact dashboard control is missing: ${id}`);
+}
 
 const guidedIds = [
   'guided-section', 'guided-step', 'guided-instructions', 'guided-real', 'guided-vpn',
@@ -57,6 +69,10 @@ const guidedIds = [
 ];
 for (const id of guidedIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Guided leak control is missing: ${id}`);
+}
+
+for (const id of ['monitor-toggle', 'monitor-status', 'monitor-timeline', 'aggressive-toggle', 'aggressive-status', 'aggressive-progress', 'aggressive-summary', 'aggressive-exposures', 'aggressive-timeline']) {
+  if (!html.includes(`id="${id}"`)) throw new Error(`Active test control is missing: ${id}`);
 }
 
 const moduleScripts = [...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*src=["']([^"']+)["'][^>]*>/gi)].map((match) => match[1]);
@@ -72,6 +88,8 @@ const appSource = await readFile(resolve(root, 'assets/app.js'), 'utf8');
 if (!/storage:\s*window\.sessionStorage/.test(appSource)) throw new Error('Guided leak profile must be wired to current-tab sessionStorage');
 if (!/runIpConsensusProgressive/.test(appSource)) throw new Error('Core must use progressive public-IP consensus');
 if (!/runGeoIpConsensusProgressive/.test(appSource)) throw new Error('Core must use progressive GeoIP consensus');
+if (!/buildConnectionView/.test(appSource) || !/renderConnection/.test(appSource)) throw new Error('Core must render the compact connection dashboard');
+if (/function\s+advancedCard\s*\(/.test(appSource) || !/function\s+advancedDisclosure\s*\(/.test(appSource)) throw new Error('Advanced diagnostics must use compact disclosure rows');
 
 const configSource = await readFile(resolve(root, 'assets/config.js'), 'utf8');
 if (!/id:\s*['"]ipapiis['"]/.test(configSource) || !/https:\/\/api\.ipapi\.is\/\?q=\{ip\}/.test(configSource)) {

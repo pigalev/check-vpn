@@ -13,7 +13,17 @@ test('only GitHub Pages-capable checks are independently runnable', () => {
 test('network endpoints and timeouts are configured', () => {
   assert.match(networkConfig.ipv4Endpoint, /^https:\/\//);
   assert.match(networkConfig.ipv6Endpoint, /^https:\/\//);
-  assert.match(networkConfig.geoIpUrlTemplate, /\{ip\}/);
+  assert.ok(Array.isArray(networkConfig.geoIpProviders));
+  assert.equal(networkConfig.geoIpProviders.length, 3);
+  assert.deepEqual(
+    networkConfig.geoIpProviders.map((provider) => provider.id),
+    ['ipapi', 'ipwhois', 'freeipapi']
+  );
+  for (const provider of networkConfig.geoIpProviders) {
+    assert.match(provider.urlTemplate, /^https:\/\//);
+    assert.match(provider.urlTemplate, /\{ip\}/);
+    assert.equal(typeof provider.kind, 'string');
+  }
   assert.ok(networkConfig.stunUrls.every((url) => url.startsWith('stun:')));
   assert.ok(networkConfig.requestTimeoutMs >= 3000);
   assert.ok(networkConfig.geoIpTimeoutMs >= 3000);

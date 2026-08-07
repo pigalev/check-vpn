@@ -6,7 +6,15 @@ export function parseIceCandidate(candidateLine) {
   const typeIndex = parts.indexOf('typ');
   if (parts.length < 8 || typeIndex < 0 || !parts[typeIndex + 1]) return null;
   const address = parts[4];
-  return { address, family: getIpFamily(address), protocol: parts[2].toLowerCase(), type: parts[typeIndex + 1].toLowerCase(), classification: classifyAddress(address) };
+  const port = Number(parts[5]);
+  return {
+    address,
+    port: Number.isInteger(port) && port >= 0 && port <= 65535 ? port : null,
+    family: getIpFamily(address),
+    protocol: parts[2].toLowerCase(),
+    type: parts[typeIndex + 1].toLowerCase(),
+    classification: classifyAddress(address)
+  };
 }
 
 export function getCandidateGroup(candidate) {
@@ -59,7 +67,7 @@ export async function runWebRtcTest({ stunUrls, timeoutMs, RTCPeerConnectionImpl
       peer.onicecandidate = (event) => {
         if (!event.candidate) { clearTimeout(timer); resolve(); return; }
         const parsed = parseIceCandidate(event.candidate.candidate);
-        if (parsed) records.set(`${parsed.address}|${parsed.protocol}|${parsed.type}`, parsed);
+        if (parsed) records.set(`${parsed.address}|${parsed.port ?? ''}|${parsed.protocol}|${parsed.type}`, parsed);
       };
     });
     peer.createDataChannel('check');

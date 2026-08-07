@@ -14,10 +14,10 @@ test('network endpoints and timeouts are configured', () => {
   assert.match(networkConfig.ipv4Endpoint, /^https:\/\//);
   assert.match(networkConfig.ipv6Endpoint, /^https:\/\//);
   assert.ok(Array.isArray(networkConfig.geoIpProviders));
-  assert.equal(networkConfig.geoIpProviders.length, 3);
+  assert.equal(networkConfig.geoIpProviders.length, 4);
   assert.deepEqual(
     networkConfig.geoIpProviders.map((provider) => provider.id),
-    ['ipapi', 'ipwhois', 'freeipapi']
+    ['ipapi', 'ipwhois', 'freeipapi', 'ipapiis']
   );
   for (const provider of networkConfig.geoIpProviders) {
     assert.match(provider.urlTemplate, /^https:\/\//);
@@ -26,6 +26,9 @@ test('network endpoints and timeouts are configured', () => {
   }
   const freeIpApi = networkConfig.geoIpProviders.find((provider) => provider.id === 'freeipapi');
   assert.match(freeIpApi.urlTemplate, /^https:\/\/free\.freeipapi\.com\/api\/json\//);
+  const ipapiIs = networkConfig.geoIpProviders.find((provider) => provider.id === 'ipapiis');
+  assert.equal(ipapiIs.kind, 'ipapiis');
+  assert.equal(ipapiIs.urlTemplate, 'https://api.ipapi.is/?q={ip}');
   assert.ok(networkConfig.stunUrls.every((url) => url.startsWith('stun:')));
   assert.ok(networkConfig.requestTimeoutMs >= 3000);
   assert.ok(networkConfig.geoIpTimeoutMs >= 3000);

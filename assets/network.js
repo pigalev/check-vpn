@@ -35,14 +35,14 @@ export function classifyAddress(address) {
   return 'invalid';
 }
 
-export async function fetchJsonWithTimeout(url, { timeoutMs = 6000, fetchImpl = fetch } = {}) {
+export async function fetchJsonWithTimeout(url, { timeoutMs = 6000, fetchImpl = fetch, headers = {} } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(url, {
       signal: controller.signal,
       cache: 'no-store',
-      headers: { Accept: 'application/json' }
+      headers: { Accept: 'application/json', ...headers }
     });
     if (!response?.ok) throw new Error(`HTTP ${response?.status ?? 'error'}`);
     return await response.json();

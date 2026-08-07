@@ -32,7 +32,7 @@ export const networkConfig = Object.freeze({
       id: 'freeipapi',
       label: 'FreeIPAPI',
       kind: 'freeipapi',
-      urlTemplate: 'https://freeipapi.com/api/json/{ip}'
+      urlTemplate: 'https://free.freeipapi.com/api/json/{ip}'
     })
   ]),
   stunUrls: Object.freeze([

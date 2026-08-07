@@ -29,15 +29,22 @@ export const features = Object.freeze({
 });
 
 const ip4Providers = [
-  { id: 'ipify4', label: 'ipify', kind: 'ipify', url: 'https://api4.ipify.org?format=json' },
-  { id: 'ippubblico4', label: 'IPPubblico', kind: 'text', url: 'https://ipv4.ippubblico.org/' },
-  { id: 'ipwho4', label: 'ipwho.is', kind: 'ipwhois', url: 'https://ipwho.is/' }
+  { id: 'ipify4', group: 'ipify', label: 'ipify', kind: 'ipify', url: 'https://api4.ipify.org?format=json' },
+  { id: 'ippubblico4', group: 'ippubblico', label: 'IPPubblico', kind: 'text', url: 'https://ipv4.ippubblico.org/' },
+  { id: 'ipwho4', group: 'ipwhois', label: 'ipwho.is', kind: 'ipwhois', url: 'https://ipwho.is/' }
 ];
 
 const ip6Providers = [
-  { id: 'ipify6', label: 'ipify', kind: 'ipify', url: 'https://api6.ipify.org?format=json' },
-  { id: 'ippubblico6', label: 'IPPubblico', kind: 'text', url: 'https://ipv6.ippubblico.org/' },
-  { id: 'icanhaz6', label: 'icanhazip', kind: 'text', url: 'https://ipv6.icanhazip.com/' }
+  { id: 'ipify6', group: 'ipify', label: 'ipify', kind: 'ipify', url: 'https://api6.ipify.org?format=json' },
+  { id: 'ippubblico6', group: 'ippubblico', label: 'IPPubblico', kind: 'text', url: 'https://ipv6.ippubblico.org/' },
+  { id: 'icanhaz6', group: 'icanhazip', label: 'icanhazip', kind: 'text', url: 'https://ipv6.icanhazip.com/' }
+];
+
+const stunDestinations = [
+  { id: 'cloudflare', group: 'cloudflare', label: 'Cloudflare', urls: ['stun:stun.cloudflare.com:3478'] },
+  { id: 'google-0', group: 'google', label: 'Google', urls: ['stun:stun.l.google.com:19302'] },
+  { id: 'google-1', group: 'google', label: 'Google backup', urls: ['stun:stun1.l.google.com:19302'] },
+  { id: 'twilio', group: 'twilio', label: 'Twilio', urls: ['stun:global.stun.twilio.com:3478'] }
 ];
 
 export const networkConfig = Object.freeze({
@@ -59,10 +66,8 @@ export const networkConfig = Object.freeze({
   ]),
   httpEchoEndpoint: 'https://httpbin.org/anything',
   tlsReflectorEndpoint: 'https://tls.peet.ws/api/all',
-  stunUrls: Object.freeze([
-    'stun:stun.cloudflare.com:3478',
-    'stun:stun.l.google.com:19302'
-  ]),
+  stunDestinations: Object.freeze(stunDestinations.map((destination) => Object.freeze({ ...destination, urls: Object.freeze([...destination.urls]) }))),
+  stunUrls: Object.freeze(stunDestinations.slice(0, 2).flatMap((destination) => destination.urls)),
   requestTimeoutMs: 6000,
   geoIpTimeoutMs: 6000,
   advancedTimeoutMs: 7000,

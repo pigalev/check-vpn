@@ -209,6 +209,7 @@ async function runCore() {
   overallStatus.textContent = 'Running'; overallStatus.dataset.status = 'running'; overallMessage.textContent = 'Running core diagnostics.'; for (const name of cards.keys()) bodyFor(name, 'Running');
 
   const displayedAddress = { 4: null, 6: null };
+  const finalIpByFamily = { 4: null, 6: null };
   const earlyGeo = new Map();
   const geoPromises = new Map();
   const cardName = (family) => family === 4 ? 'ipv4' : 'ipv6';
@@ -223,9 +224,11 @@ async function runCore() {
         onFirstUsable: (geo) => {
           if (currentRunId !== expectedRunId || displayedAddress[family] !== address) return;
           earlyGeo.set(address, geo);
+          const finalIp = finalIpByFamily[family];
           renderIp(cardName(family), {
-            family, address, agreement: null, geo,
-            ipFinal: false, geoPending: true, geoFinal: false
+            ...(finalIp ?? {}), family, address, geo,
+            agreement: finalIp?.agreement ?? null,
+            ipFinal: Boolean(finalIp), geoPending: true, geoFinal: false
           });
         }
       }));
@@ -269,6 +272,7 @@ async function runCore() {
   async function finalizeFamily(family, ipPromise) {
     const result = await ipPromise;
     if (currentRunId !== expectedRunId) return null;
+    finalIpByFamily[family] = result;
     displayedAddress[family] = result.address ?? null;
     if (!result.address) {
       const finalResult = { ...result, geo: null, ipFinal: true, geoPending: false, geoFinal: true };

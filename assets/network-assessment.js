@@ -17,7 +17,17 @@ export function assessAddressFamilies({ ipv4, ipv6, webrtc }) {
   const asnDifferent = Boolean(g4.asn && g6.asn && g4.asn !== g6.asn);
   const countryDifferent = Boolean(g4.countryCode && g6.countryCode && g4.countryCode !== g6.countryCode);
   const orgDifferent = Boolean(g4.org && g6.org && g4.org.toLowerCase() !== g6.org.toLowerCase());
-  if (countryDifferent && (asnDifferent || orgDifferent)) findings.push(finding('ipv6-bypass', 'leak', 'Possible IPv6 tunnel bypass', `IPv4 and IPv6 resolve to materially different networks (${g4.asn ?? 'unknown'} / ${g6.asn ?? 'unknown'}).`, ['ipv4', 'ipv6', 'geoip']));
-  else if (asnDifferent || countryDifferent || orgDifferent) findings.push(finding('ip-family-network-difference', 'review', 'IPv4 and IPv6 use different network metadata', 'The difference may be legitimate, but it deserves review.', ['ipv4', 'ipv6', 'geoip']));
+  if (asnDifferent || countryDifferent || orgDifferent) {
+    const materiallyDifferent = countryDifferent && (asnDifferent || orgDifferent);
+    findings.push(finding(
+      materiallyDifferent ? 'possible-ipv6-bypass' : 'ip-family-network-difference',
+      'review',
+      materiallyDifferent ? 'IPv4 and IPv6 appear to use materially different networks' : 'IPv4 and IPv6 use different network metadata',
+      materiallyDifferent
+        ? `This may indicate an IPv6 tunnel bypass, but browser-only network metadata is not enough to confirm one (${g4.asn ?? 'unknown'} / ${g6.asn ?? 'unknown'}).`
+        : 'The difference may be legitimate, but it deserves review.',
+      ['ipv4', 'ipv6', 'geoip']
+    ));
+  }
   return findings;
 }

@@ -22,7 +22,7 @@ test('app and guided runtime wire all guided diagnostics primitives', () => {
 });
 
 test('media permission test is only entered from its explicit runtime button handler', () => {
-  assert.match(runtime, /mediaWebRtcButton\.addEventListener\(['"]click['"]/);
+  assert.match(runtime, /mediaWebRtcButton\?\.addEventListener\(['"]click['"]/);
   assert.match(runtime, /navigator\.mediaDevices\?\.getUserMedia/);
   assert.doesNotMatch(app, /runWebRtcMediaPermissionTest\s*\(/);
 });

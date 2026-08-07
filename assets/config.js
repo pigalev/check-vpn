@@ -17,12 +17,13 @@ export const features = Object.freeze({
 
 const ip4Providers = [
   { id: 'ipify4', label: 'ipify', kind: 'ipify', url: 'https://api4.ipify.org?format=json' },
-  { id: 'ipapi4', label: 'ipapi.co', kind: 'ipapi', url: 'https://ipapi.co/json/' },
+  { id: 'ippubblico4', label: 'IPPubblico', kind: 'text', url: 'https://ipv4.ippubblico.org/' },
   { id: 'ipwho4', label: 'ipwho.is', kind: 'ipwhois', url: 'https://ipwho.is/' }
 ];
 
 const ip6Providers = [
   { id: 'ipify6', label: 'ipify', kind: 'ipify', url: 'https://api6.ipify.org?format=json' },
+  { id: 'ippubblico6', label: 'IPPubblico', kind: 'text', url: 'https://ipv6.ippubblico.org/' },
   { id: 'icanhaz6', label: 'icanhazip', kind: 'text', url: 'https://ipv6.icanhazip.com/' }
 ];
 

@@ -41,3 +41,14 @@ test('qualifies incomplete results', () => {
   });
   assert.equal(result.status, 'incomplete');
 });
+
+test('guided known-real finding forces top-level leak', () => {
+  const result = assessResults({
+    ipv4: completeIp(4, '77.110.1.1'),
+    ipv6: { status: 'unavailable', family: 6, address: null, agreement: { agree: true }, error: null },
+    webrtc: { status: 'complete', publicAddresses: ['77.110.1.1'], candidates: [], error: null },
+    guidedFindings: [{ id: 'guided-real-ip', severity: 'leak', category: 'guided', summary: 'Known real IP exposed', details: '95.25.1.2', sources: ['guided-test'] }]
+  });
+  assert.equal(result.status, 'leak');
+  assert.equal(result.findings.some((finding) => finding.id === 'guided-real-ip'), true);
+});

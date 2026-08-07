@@ -13,14 +13,14 @@
       <div>
         <p class="eyebrow">Network diagnostics</p>
         <h1>VPN Leak Check</h1>
-        <p class="intro">Compare the public addresses exposed by HTTP and WebRTC.</p>
+        <p class="intro">Compare public IP, location, and WebRTC addresses exposed by this connection.</p>
       </div>
-      <button id="run-tests" class="primary-button" type="button">Run tests</button>
+      <button id="run-tests" class="primary-button" type="button">Run again</button>
     </header>
     <main>
       <section class="summary" aria-live="polite">
-        <span id="overall-status" class="status-pill" data-status="idle">Not run</span>
-        <p id="overall-message">Start the checks to inspect this connection.</p>
+        <span id="overall-status" class="status-pill" data-status="idle">Starting</span>
+        <p id="overall-message">The available checks start automatically.</p>
       </section>
       <section id="results-grid" class="results-grid" aria-label="Test results"></section>
       <div class="report-actions">

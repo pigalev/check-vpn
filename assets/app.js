@@ -1,6 +1,6 @@
 import { appConfig, features, getEnabledChecks, networkConfig } from './config.js';
 import { runIpTest } from './ip-tests.js';
-import { runGeoIpLookup } from './geoip.js';
+import { runGeoIpConsensus } from './geoip.js';
 import { countryCodeToFlagUrl } from './country.js';
 import { describeCandidate, runWebRtcTest } from './webrtc-test.js';
 import { collectBrowserInfo } from './browser-info.js';
@@ -110,8 +110,12 @@ function renderRunning(name) {
   addText(body, cardDefinitions[name]?.description ?? 'Collecting information.');
 }
 
+function hasGeoData(geo) {
+  return geo && (geo.status === 'complete' || geo.status === 'partial');
+}
+
 function formatGeoLocation(geo) {
-  if (!geo || geo.status !== 'complete') return null;
+  if (!hasGeoData(geo)) return null;
   const place = [geo.city, geo.region].filter(Boolean).join(', ');
   return [geo.country, place].filter(Boolean).join(' · ');
 }
@@ -135,6 +139,66 @@ function buildLocationContent(geo) {
   return location;
 }
 
+function formatSourceLocation(source) {
+  const place = [source.city, source.region].filter(Boolean).join(', ');
+  return [source.country, place].filter(Boolean).join(' · ') || 'Location unavailable';
+}
+
+function renderGeoDifferences(body, geo) {
+  if (!geo?.differences?.length) return;
+
+  const block = document.createElement('div');
+  block.className = `geo-differences ${geo.agreement?.countryAgree === false ? 'geo-differences-warning' : ''}`;
+  const heading = document.createElement('p');
+  heading.className = 'geo-differences-title';
+  heading.textContent = geo.agreement?.countryAgree === false
+    ? 'Country disagreement'
+    : geo.agreement?.locationAgree === false
+      ? 'Location estimates differ'
+      : 'Provider metadata differs';
+  block.append(heading);
+
+  for (const source of geo.differences) {
+    const row = document.createElement('div');
+    row.className = 'geo-source-row';
+    const label = document.createElement('span');
+    label.className = 'geo-source-label';
+    label.textContent = source.source?.label ?? source.source?.id ?? 'Provider';
+
+    const value = document.createElement('div');
+    value.className = 'geo-source-value';
+    const location = document.createElement('div');
+    location.className = 'geo-source-location';
+    const flagUrl = countryCodeToFlagUrl(source.countryCode);
+    if (flagUrl) {
+      const flag = document.createElement('img');
+      flag.className = 'country-flag country-flag-small';
+      flag.src = flagUrl;
+      flag.alt = '';
+      flag.setAttribute('aria-hidden', 'true');
+      flag.addEventListener('error', () => flag.remove(), { once: true });
+      location.append(flag);
+    }
+    const locationText = document.createElement('span');
+    locationText.textContent = formatSourceLocation(source);
+    location.append(locationText);
+    value.append(location);
+
+    const network = [source.asn, source.org].filter(Boolean).join(' · ');
+    if (network) {
+      const networkLine = document.createElement('div');
+      networkLine.className = 'geo-source-network';
+      networkLine.textContent = network;
+      value.append(networkLine);
+    }
+
+    row.append(label, value);
+    block.append(row);
+  }
+
+  body.append(block);
+}
+
 function renderIp(name, result) {
   const body = setCardState(name, result.status);
   if (!body) return;
@@ -148,14 +212,21 @@ function renderIp(name, result) {
   addText(body, result.address, 'card-value');
   const geo = result.geo;
   const rows = [];
-  if (geo?.status === 'complete') {
+  if (hasGeoData(geo)) {
     rows.push(['Location', buildLocationContent(geo)]);
     rows.push(['Network', [geo.asn, geo.org].filter(Boolean).join(' · ') || 'Unknown']);
     if (geo.timezone) rows.push(['Timezone', geo.timezone]);
+    const available = geo.agreement?.available ?? 0;
+    const total = geo.agreement?.total ?? networkConfig.geoIpProviders.length;
+    const agree = !geo.differences?.length;
+    rows.push(['Sources', `${available}/${total} available${available > 1 ? (agree ? ' · agree' : ' · differ') : ''}`]);
   } else {
-    rows.push(['Location', 'Location unavailable']);
+    const total = geo?.agreement?.total ?? networkConfig.geoIpProviders.length;
+    rows.push(['Location', 'Unavailable']);
+    rows.push(['Sources', `0/${total} available`]);
   }
   addDetailList(body, rows);
+  renderGeoDifferences(body, geo);
 }
 
 function renderCandidate(body, candidate) {
@@ -263,9 +334,9 @@ async function enrichIp(result) {
   if (result?.status !== 'complete' || !result.address || !features.geoip) {
     return { ...result, geo: null };
   }
-  const geo = await runGeoIpLookup({
+  const geo = await runGeoIpConsensus({
     ip: result.address,
-    urlTemplate: networkConfig.geoIpUrlTemplate,
+    providers: networkConfig.geoIpProviders,
     timeoutMs: networkConfig.geoIpTimeoutMs
   });
   return { ...result, geo };

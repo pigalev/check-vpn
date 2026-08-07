@@ -85,7 +85,7 @@ export function createGuidedAppRuntime({
   }
 
   function getReport() {
-    const state = getStressState?.() ?? null;
+    const state = stressIsGuided ? (getStressState?.() ?? null) : null;
     const aggressive = state ? { ...state, coverage: stressCoverage(state), exposures: [...(state.exposures ?? []), ...mediaExposures()] } : { exposures: mediaExposures(), coverage: { sufficient: false } };
     return buildGuidedLeakReport({ profile, captures, aggressive, media, observations });
   }

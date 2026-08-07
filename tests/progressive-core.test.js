@@ -19,14 +19,17 @@ test('early callbacks are guarded by current run id and address', () => {
   assert.match(app, /displayedAddress\[family\]\s*!==\s*address/);
 });
 
-test('progressive cards expose detected locating and checking states', () => {
-  assert.match(app, /Detected/);
+test('progressive dashboard renders first IP and first location through shared live family state', () => {
+  assert.match(app, /const liveIp = \{/);
+  assert.match(app, /function handleFirstIp\(family, source\)/);
+  assert.match(app, /liveIp\[family\] = \{ family, address: source\.address/);
+  assert.match(app, /renderLiveConnection\(\)/);
+  assert.match(app, /geoPending:\s*true/);
   assert.match(app, /Locating…/);
   assert.match(app, /Checking…/);
-  assert.match(app, /else if \(result\.geoPending\).*Locating…/s);
 });
 
-test('late first GeoIP result preserves completed IP state instead of reverting to Detected', () => {
+test('late first GeoIP result preserves completed IP state instead of reverting to provisional', () => {
   assert.match(app, /finalIpByFamily/);
   assert.match(app, /const finalIp = finalIpByFamily\[family\]/);
   assert.match(app, /ipFinal:\s*Boolean\(finalIp\)/);

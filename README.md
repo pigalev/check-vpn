@@ -8,7 +8,7 @@ The page starts the available checks automatically when opened. Use **Run again*
 
 - Public IPv4 over HTTP
 - Public IPv6 over an IPv6 request
-- GeoIP enrichment for detected public addresses
+- Multi-provider GeoIP enrichment for detected public addresses
 - WebRTC ICE candidates, including public, private, local, relay, and mDNS-protected candidates when the browser exposes them
 - Browser and connection metadata exposed without extra permissions
 - Conservative comparison of HTTP and WebRTC results
@@ -39,10 +39,12 @@ The site uses no analytics, cookies, or persistent history. Results remain in br
 The GitHub Pages-only configuration uses:
 
 - ipify for IPv4 and IPv6 discovery
-- ipapi.co for country, city/region, ASN, organization/provider, and timezone metadata
+- ipapi.co, ipwho.is, and FreeIPAPI in parallel for country, city/region, ASN, organization/provider, and timezone metadata
 - Cloudflare STUN and Google STUN for WebRTC discovery
 
-GeoIP does not determine the address used by the test. The site first detects the public IPv4/IPv6 address through the configured IP endpoint, then sends that already-detected address to the configured GeoIP provider for metadata lookup. If GeoIP is unavailable, the IP result remains valid and only the location details are omitted.
+GeoIP does not determine the address used by the test. The site first detects the public IPv4/IPv6 address through the configured IP endpoint, then sends that already-detected address to each configured GeoIP provider for metadata lookup. One working provider is enough to display location information; failed providers do not invalidate the IP result.
+
+GeoIP databases are approximate and may disagree, especially at city/region level. The UI shows a consensus value and the number of available providers. When successful providers return different metadata, their individual results are shown so the disagreement is visible. GeoIP disagreements do not change the top-level VPN leak assessment, which is based on the HTTP/WebRTC address comparison.
 
 Modern browsers may replace a numeric local WebRTC address such as `192.168.x.x` with an mDNS hostname ending in `.local`. When this happens, the page reports that the local address is hidden by the browser instead of pretending the numeric address is known.
 

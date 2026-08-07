@@ -2,27 +2,37 @@
 
 Static browser-based VPN leak and privacy diagnostics for GitHub Pages.
 
-## Core checks
+## Core dashboard
 
 Core diagnostics start automatically when the page opens. **Run again** repeats the core run and clears cached Advanced results.
 
-- Progressive multi-source public IPv4 consensus
-- Progressive multi-source public IPv6 consensus
-- Progressive multi-provider GeoIP for detected public addresses
-- WebRTC ICE candidates, including public, private, CGNAT/shared, IPv6 local, relay, and mDNS-protected candidates
-- HTTP public-address vs WebRTC comparison
-- IPv4 vs IPv6 network-metadata comparison
-- Browser timezone vs IP timezone comparison
-- Compact browser privacy summary
-- Structured result severity: `Protected`, `Review`, `Leak detected`, or `Incomplete`
+The default UI is intentionally compact and grouped by what the user needs to know rather than by internal diagnostic modules:
 
-Public IP and location cards use progressive rendering. The first valid IPv4/IPv6 returned by a configured provider is shown immediately while the remaining public-IP providers continue in the background. As soon as that address is known, all configured GeoIP providers start in parallel and the first usable country/region/city result is displayed immediately. The card is then updated with the completed IP and GeoIP consensus, so slow or blocked providers do not hold the first visible result until their timeout.
+- **Your connection** — the primary public IP is the dominant result, with approximate GeoIP/network metadata and source agreement. IPv6 stays inside the same panel and collapses to a single `Not detected` row when absent.
+- **Leak checks** — WebRTC/public-IP consistency is summarized first. Raw ICE candidates and transport details stay under **WebRTC details**. A public mismatch is shown directly without requiring expansion.
+- **Privacy** — meaningful browser/IP consistency signals such as a timezone mismatch stay visible; routine platform, secure-context, GPC and DNT metadata lives under **Privacy details**.
+- **Advanced diagnostics** — lazy third-party checks are shown as compact expandable rows instead of equal-height cards.
+- Structured result severity remains `Protected`, `Review`, `Leak detected`, or `Incomplete`.
 
-Provisional values are display-only. The final report and **Copy JSON** use the completed consensus results. If the final IP consensus selects a different address from the first provisional response, stale GeoIP results for the old address are ignored and geolocation is resolved for the final address instead.
+The underlying core checks still include progressive multi-source IPv4 and IPv6 consensus, multi-provider GeoIP, WebRTC ICE candidates, HTTP-vs-WebRTC comparison, IPv4/IPv6 network-metadata comparison and browser-timezone consistency.
+
+Public IP and location use progressive rendering. The first valid IPv4/IPv6 returned by a configured provider is shown immediately while the remaining public-IP providers continue in the background. As soon as that address is known, all configured GeoIP providers start in parallel and the first usable country/region/city result is displayed immediately. The dashboard is then updated with the completed IP and GeoIP consensus, so slow or blocked providers do not hold the first visible result until their timeout.
+
+Provisional values are display-only. The final report and **Copy JSON** use the completed consensus results. If final IP consensus selects a different address from the first provisional response, stale GeoIP results for the old address are ignored and geolocation is resolved for the final address instead.
 
 The active GeoIP race currently uses `ipapi.co`, `ipwho.is`, `FreeIPAPI`, and `ipapi.is`. The code can normalize Sypex Geo responses, but the Sypex regional endpoint is not enabled in the static configuration until cross-origin browser access can be verified reliably from the deployed page. No JSONP or `no-cors` workaround is used.
 
 A third-party outage does not erase data returned by other providers. If only one public-IP or GeoIP source works, its result remains visible with reduced source coverage. GeoIP databases can legitimately disagree about a mobile carrier gateway's city or region; that disagreement is metadata only and is never treated as VPN-leak evidence by itself.
+
+## Active tests
+
+The stronger interactive workflows are grouped under **Active tests** and remain collapsed while idle so they do not dominate the page:
+
+- **Guided VPN Leak Test** — recommended three-step pre-VPN/VPN/stress workflow;
+- **Kill Switch test** — manual public-address monitoring during disconnect/reconnect;
+- **Aggressive Leak Test** — opt-in 60-second high-frequency test.
+
+Opening or collapsing one of these UI disclosures does not start or stop the diagnostic. Test lifecycle remains controlled only by its explicit action buttons.
 
 ## Guided VPN Leak Test
 
@@ -31,7 +41,7 @@ The **Guided VPN Leak Test** is the strongest static-browser check in this proje
 It is an explicit three-step workflow:
 
 1. Turn the VPN **off** and press **Capture real IP**. The page captures trusted public IPv4/IPv6 addresses from the current non-VPN connection.
-2. Turn the VPN **on**, wait for it to connect, and press **Capture VPN IP**. If a captured VPN address still exactly matches a captured real address, the wizard does not silently accept it; it asks for retry or explicit **Continue anyway**.
+2. Turn the VPN **on**, wait for it to connect, and press **Capture VPN IP**. If a captured VPN address still exactly matches a captured real address, the wizard asks for retry or explicit **Continue anyway**.
 3. Keep the VPN connected and press **Start 60s stress test**. The stress phase does not start automatically after capture.
 
 Captured addresses are stored only in `sessionStorage` for the current browser tab/session. They are not written to `localStorage` or uploaded to project storage. **Clear captured IPs** removes the guided captures and guided in-memory results without erasing the normal core report or Kill Switch history.
@@ -53,7 +63,7 @@ A Known Real finding outranks poor sampling coverage: if the exact captured pre-
 
 ### Per-provider evidence and reconnect bursts
 
-Guided stress keeps provider-level HTTP observations instead of looking only at the majority consensus. For example, if two public-IP providers return the VPN address but one provider returns an exact Known Real address, that minority observation is preserved and counts as leak evidence rather than being hidden by the consensus winner.
+Guided stress keeps provider-level HTTP observations instead of looking only at the majority consensus. If two public-IP providers return the VPN address but one provider returns an exact Known Real address, that minority observation is preserved and counts as leak evidence rather than being hidden by the consensus winner.
 
 The normal high-frequency HTTP schedule remains anchored to fixed launch times. Slow requests do not push the next intended 2-second launch later.
 
@@ -90,7 +100,7 @@ The JSON produced by **Copy JSON** includes the `guidedLeak` report with capture
 
 ## Aggressive Leak Test
 
-The original **Aggressive Leak Test** remains available as an unguided/manual high-frequency test focused on catching short-lived public-IP exposure while a VPN disconnects, reconnects, changes networks, or fails its Kill Switch.
+The **Aggressive Leak Test** remains available as an unguided/manual high-frequency test focused on catching short-lived public-IP exposure while a VPN disconnects, reconnects, changes networks, or fails its Kill Switch.
 
 It never starts automatically. Press **Start 60s test** and reproduce the network transition during the 60-second observation window.
 
@@ -102,7 +112,7 @@ During the explicit test the page repeatedly compares several independent browse
 - TLS-reflector remote-IP observation approximately every 15 seconds;
 - immediate debounced network-change probes.
 
-Every successfully observed public IPv4/IPv6 address is compared with the trusted baseline for that unguided run. The test merges repeated observations of the same unexpected address into one exposure record showing first/last observation, approximate exposure window, observing paths, whether the original baseline returned, and optional GeoIP/ASN/network enrichment.
+Every successfully observed public IPv4/IPv6 address is compared with the trusted baseline for that unguided run. Repeated observations of the same unexpected address are merged into one exposure record showing first/last observation, approximate exposure window, observing paths, whether the original baseline returned, and optional GeoIP/ASN/network enrichment.
 
 The final unguided result is exactly one of:
 
@@ -114,26 +124,28 @@ Browser timer gaps are measured. If a background tab is heavily throttled, the t
 
 Aggressive mode intentionally sends more requests to configured third-party services for 60 seconds. It remains opt-in, uses no analytics, and stores its timeline only in browser memory unless **Copy JSON** is used.
 
-## Advanced details
+## Advanced diagnostics
 
-Advanced checks are intentionally lazy. They run when **Advanced details** is opened and are cached for the current core run. **Run advanced again** explicitly retries them.
+Advanced checks are intentionally lazy. They run when **Advanced diagnostics** is opened and are cached for the current core run. **Run advanced again** explicitly retries them.
+
+The default Advanced surface is a compact list. Each result expands only when technical evidence is useful. A failed external service consumes one concise row instead of rendering a large card full of repeated `Unavailable` values. For example, if the TLS reflector cannot be reached, the UI reports `TLS fingerprint · Unavailable` with a short reason; JA3/JA4/HTTP/TLS fields are shown only when those values actually exist.
 
 Advanced diagnostics include:
 
-- VPN / proxy / Tor / datacenter and related IP-database classifications
-- ASN, organization, prefix, RIR, and network type where available
-- Reverse DNS (PTR) through independent public DNS-over-HTTPS resolvers
-- Separate STUN/WebRTC observations using the configured STUN servers
-- STUN public-port comparison and NAT mapping hints without pretending to identify an exact NAT type
-- TLS/HTTP fingerprint observation through a third-party TLS reflector, including JA3/JA4 when exposed by the reflector
-- Local Canvas, WebGL, WebGPU, and Audio fingerprint exposure checks
-- High-confidence environment consistency checks across User-Agent, Client Hints, legacy platform metadata, touch support, and related browser signals
-- Best-effort HTTP request-path inspection through an echo service
-- Expanded browser-visible privacy information such as screen/viewport, CPU threads, device memory where exposed, touch points, cookies, connection hints, GPC, and DNT
+- VPN / proxy / Tor / datacenter and related IP-database classifications;
+- ASN, organization, prefix, RIR, and network type where available;
+- reverse DNS (PTR) through independent public DNS-over-HTTPS resolvers;
+- separate STUN/WebRTC observations using configured STUN servers;
+- STUN public-port comparison and NAT mapping hints without pretending to identify an exact NAT type;
+- TLS/HTTP fingerprint observation through a third-party TLS reflector, including JA3/JA4 when exposed by the reflector;
+- local Canvas, WebGL, WebGPU, and Audio fingerprint exposure checks;
+- high-confidence environment consistency checks across User-Agent, Client Hints, legacy platform metadata, touch support, and related browser signals;
+- best-effort HTTP request-path inspection through an echo service;
+- expanded browser-visible privacy information such as screen/viewport, CPU threads, device memory where exposed, touch points, cookies and connection hints.
 
 Canvas and audio digests are computed locally with Web Crypto and remain only in the in-memory report unless the user copies the JSON. They are not sent to the project or to analytics infrastructure.
 
-Reverse DNS is **not** a DNS leak test. Third-party VPN/proxy/Tor labels are database classifications and are not treated as proof of a leak. STUN port differences are NAT-behavior hints only.
+Reverse DNS is **not** a DNS leak test. Third-party VPN/proxy/Tor labels are database classifications and are not treated as proof of a leak. STUN port differences are NAT-behavior hints only. An unavailable Advanced service is a diagnostic-availability condition, not leak evidence.
 
 ## Kill Switch test
 
@@ -179,7 +191,7 @@ Those checks require infrastructure controlled by this project and can be added 
 
 ## Privacy and external services
 
-The project itself uses no analytics and stores no persistent result history. Core, Advanced, Kill Switch, Aggressive, and stress timelines remain in browser memory unless the user copies them. Guided Real/VPN captures are the exception only in lifetime, not destination: they use current-tab `sessionStorage` so the multi-step workflow survives activity within that tab, and **Clear captured IPs** removes them.
+The project itself uses no analytics and stores no persistent result history. Core, Advanced, Kill Switch, Aggressive, and stress timelines remain in browser memory unless the user copies them. Guided Real/VPN captures use current-tab `sessionStorage` so the multi-step workflow survives activity within that tab, and **Clear captured IPs** removes them.
 
 The current GitHub Pages configuration may contact multiple third-party services, including:
 

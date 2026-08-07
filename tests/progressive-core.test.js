@@ -16,11 +16,24 @@ test('core no longer waits for one Promise.all of IP4 IP6 and WebRTC before rend
 test('early callbacks are guarded by current run id and address', () => {
   assert.match(app, /expectedRunId/);
   assert.match(app, /currentRunId\s*!==\s*expectedRunId/);
-  assert.match(app, /displayedAddress/);
+  assert.match(app, /displayedAddress\[family\]\s*!==\s*address/);
 });
 
 test('progressive cards expose detected locating and checking states', () => {
   assert.match(app, /Detected/);
   assert.match(app, /Locating…/);
   assert.match(app, /Checking…/);
+  assert.match(app, /else if \(result\.geoPending\).*Locating…/s);
+});
+
+test('late first GeoIP result preserves completed IP state instead of reverting to Detected', () => {
+  assert.match(app, /finalIpByFamily/);
+  assert.match(app, /const finalIp = finalIpByFamily\[family\]/);
+  assert.match(app, /ipFinal:\s*Boolean\(finalIp\)/);
+});
+
+test('final report is built from completed family consensus rather than provisional values', () => {
+  assert.match(app, /const \[ipv4, ipv6, webrtc\] = await Promise\.all/);
+  assert.match(app, /currentReport = \{ startedAt:[\s\S]*ipv4, ipv6, webrtc/);
+  assert.match(app, /runId:\s*expectedRunId/);
 });

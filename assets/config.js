@@ -1,6 +1,15 @@
 export const appConfig = Object.freeze({
   autoRun: true,
-  monitorIntervalMs: 5000
+  monitorIntervalMs: 5000,
+  aggressiveDurationMs: 60000,
+  aggressiveHttpIntervalMs: 2000,
+  aggressiveStunIntervalMs: 5000,
+  aggressiveEchoIntervalMs: 10000,
+  aggressiveTlsIntervalMs: 15000,
+  aggressiveGapMultiplier: 2.5,
+  aggressiveBurstCooldownMs: 1500,
+  aggressiveMinHttpAttempts: 10,
+  aggressiveMinSuccessfulHttpSamples: 6
 });
 
 export const features = Object.freeze({
@@ -11,6 +20,7 @@ export const features = Object.freeze({
   advanced: true,
   monitor: true,
   monitorEnrichment: true,
+  aggressiveLeak: true,
   dns: false,
   torrent: false,
   email: false

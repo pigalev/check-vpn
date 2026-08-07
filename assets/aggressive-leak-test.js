@@ -52,7 +52,9 @@ export function createAggressiveLeakTest({
   async function runHttp(trigger, runId, intendedMs = null) {
     if (!active(runId)) return;
     const actualMs = now();
-    state = { ...state, schedulerAttempts: [...state.schedulerAttempts, { intendedMs: intendedMs ?? actualMs, actualMs }] };
+    if (trigger !== 'baseline') {
+      state = { ...state, schedulerAttempts: [...state.schedulerAttempts, { intendedMs: intendedMs ?? actualMs, actualMs }] };
+    }
     let results = [];
     try { results = await sampleHttp(); } catch { results = []; }
     if (!active(runId)) return;
@@ -106,15 +108,20 @@ export function createAggressiveLeakTest({
   }
 
   function recurring(task, interval, runId, startedAt) {
-    const tick = async () => {
+    let sequence = 1;
+    const scheduleNext = () => {
       if (!active(runId)) return;
-      const elapsed = now() - startedAt;
-      if (elapsed >= config.aggressiveDurationMs) return;
-      const intended = startedAt + Math.ceil(elapsed / interval) * interval;
-      await task('scheduled', runId, intended);
-      if (active(runId)) schedule(tick, interval, runId);
+      const intended = startedAt + sequence * interval;
+      if (intended >= startedAt + config.aggressiveDurationMs) return;
+      const delay = Math.max(0, intended - now());
+      schedule(() => {
+        if (!active(runId)) return;
+        sequence += 1;
+        scheduleNext();
+        void Promise.resolve(task('scheduled', runId, intended)).catch(() => {});
+      }, delay, runId);
     };
-    schedule(tick, interval, runId);
+    scheduleNext();
   }
 
   async function networkBurst(runId) {
@@ -166,19 +173,29 @@ export function createAggressiveLeakTest({
     runSequence += 1;
     currentRunId = runSequence;
     const runId = currentRunId;
-    const startedAt = now();
     lastBurstAt = -Infinity;
     state = {
-      ...createLeakState({ baseline: initialBaseline, startedAt, durationMs: config.aggressiveDurationMs }),
+      ...createLeakState({ baseline: initialBaseline, startedAt: now(), durationMs: config.aggressiveDurationMs }),
       status: 'running', result: null, resultLabel: null, reasons: [], coverage: null,
-      runId, endsAt: startedAt + config.aggressiveDurationMs
+      runId, endsAt: null
     };
     registerListeners();
     emit();
     await Promise.allSettled([
-      runHttp('baseline', runId, startedAt), runStun('baseline', runId), runEcho('baseline', runId), runTls('baseline', runId)
+      runHttp('baseline', runId), runStun('baseline', runId), runEcho('baseline', runId), runTls('baseline', runId)
     ]);
     if (!active(runId)) return copyState(state);
+
+    const startedAt = now();
+    state = {
+      ...state,
+      startedAt,
+      durationMs: config.aggressiveDurationMs,
+      endsAt: startedAt + config.aggressiveDurationMs,
+      schedulerAttempts: []
+    };
+    emit();
+
     recurring(runHttp, config.aggressiveHttpIntervalMs, runId, startedAt);
     recurring(runStun, config.aggressiveStunIntervalMs, runId, startedAt);
     recurring(runEcho, config.aggressiveEchoIntervalMs, runId, startedAt);

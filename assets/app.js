@@ -19,6 +19,9 @@ import { createMonitorEnricher } from './monitor-enrichment.js';
 import { createAggressiveLeakTest } from './aggressive-leak-test.js';
 import { renderAggressiveLeakTest } from './aggressive-leak-render.js';
 import { createAggressiveLeakEnricher } from './aggressive-leak-enrichment.js';
+import { createGuidedAppRuntime } from './guided-app-runtime.js';
+import { collectProviderObservations } from './provider-observations.js';
+import { runWebRtcStress } from './webrtc-stress.js';
 
 const grid = document.querySelector('#results-grid');
 const runButton = document.querySelector('#run-tests');
@@ -48,6 +51,11 @@ let advancedRunId = null;
 let running = false;
 let monitor = null;
 let aggressive = null;
+let aggressiveMode = null;
+let guidedRuntime = null;
+let guidedStress = null;
+let guidedFindings = [];
+let guidedStressSampleCursor = 0;
 const enrichingEvents = new Set();
 const enrichingAggressive = new Set();
 
@@ -151,7 +159,10 @@ async function enrich(result) {
   return { ...result, geo: await runGeoIpConsensus({ ip: result.address, providers: networkConfig.geoIpProviders, timeoutMs: networkConfig.geoIpTimeoutMs }) };
 }
 
+function guidedStressRunning() { return guidedStress?.getState?.().status === 'running'; }
+
 function currentAggressiveFindings() {
+  if (aggressiveMode === 'guided') return [];
   const state = aggressive?.getState?.() ?? currentReport?.aggressive;
   if (!state) return [];
   if (state.exposures?.length) return state.exposures.map((exposure) => ({
@@ -172,7 +183,8 @@ function reassess() {
     ipv4: currentReport.ipv4, ipv6: currentReport.ipv6, webrtc: currentReport.webrtc, privacy: currentReport.privacy,
     networkFindings: [...base, ...extra],
     monitorFindings: monitor ? monitorFindings(monitor.getState()) : [],
-    aggressiveFindings: currentAggressiveFindings()
+    aggressiveFindings: currentAggressiveFindings(),
+    guidedFindings
   });
   renderOverall(currentReport.assessment);
 }
@@ -184,7 +196,7 @@ function renderOverall(assessment) {
 }
 
 async function runCore() {
-  if (running || aggressive?.getState?.().status === 'running') return;
+  if (running || aggressive?.getState?.().status === 'running' || guidedStressRunning()) return;
   running = true; runButton.disabled = true; copyButton.disabled = true; currentRunId += 1; advancedRunId = null; advancedResults.replaceChildren();
   overallStatus.textContent = 'Running'; overallStatus.dataset.status = 'running'; overallMessage.textContent = 'Running core diagnostics.'; for (const name of cards.keys()) bodyFor(name, 'Running');
   const [r4, r6, webrtc] = await Promise.all([
@@ -193,9 +205,10 @@ async function runCore() {
     runWebRtcTest({ stunUrls: networkConfig.stunUrls, timeoutMs: networkConfig.webrtcTimeoutMs })
   ]);
   const [ipv4, ipv6] = await Promise.all([enrich(r4), enrich(r6)]); const browser = collectBrowserInfo(window); const privacy = assessPrivacy({ browser, ipv4, ipv6 });
-  const networkFindings = assessAddressFamilies({ ipv4, ipv6, webrtc }); const assessment = assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings, monitorFindings: [], aggressiveFindings: [] });
-  currentReport = { startedAt: new Date().toISOString(), runId: currentRunId, ipv4, ipv6, webrtc, browser, privacy, assessment, advanced: null, monitor: monitor?.getState?.() ?? null, aggressive: aggressive?.getState?.() ?? null };
-  renderIp('ipv4', ipv4); renderIp('ipv6', ipv6); renderWebRtc(webrtc, ipv4, ipv6); renderPrivacy(browser, privacy); renderOverall(assessment); running = false; runButton.disabled = false; copyButton.disabled = false;
+  const networkFindings = assessAddressFamilies({ ipv4, ipv6, webrtc });
+  const assessment = assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings, monitorFindings: [], aggressiveFindings: currentAggressiveFindings(), guidedFindings });
+  currentReport = { startedAt: new Date().toISOString(), runId: currentRunId, ipv4, ipv6, webrtc, browser, privacy, assessment, advanced: null, monitor: monitor?.getState?.() ?? null, aggressive: aggressive?.getState?.() ?? null, guidedLeak: guidedRuntime?.getReport?.() ?? null };
+  renderIp('ipv4', ipv4); renderIp('ipv6', ipv6); renderWebRtc(webrtc, ipv4, ipv6); renderPrivacy(browser, privacy); renderOverall(assessment); running = false; runButton.disabled = guidedStressRunning(); copyButton.disabled = false;
 }
 
 function advancedCard(title) { const card = document.createElement('article'); card.className = 'advanced-card'; const h = document.createElement('h3'); h.textContent = title; card.append(h); advancedResults.append(card); return card; }
@@ -304,8 +317,9 @@ async function enrichAggressiveExposures(state) {
   }
 }
 function handleAggressiveUpdate(state) {
+  aggressiveMode = 'unguided';
   renderAggressiveLeakTest(aggressiveElements, state);
-  runButton.disabled = state.status === 'running';
+  runButton.disabled = state.status === 'running' || guidedStressRunning();
   if (currentReport) currentReport.aggressive = state;
   queueMicrotask(() => enrichAggressiveExposures(state));
   reassess();
@@ -330,8 +344,94 @@ function createAggressiveController() {
   });
 }
 
+function guidedObservationRow(item, index) {
+  return {
+    ...item,
+    status: item?.successful ? 'complete' : item?.status ?? 'unavailable',
+    providerLabel: item?.providerLabel ?? item?.source ?? item?.providerId ?? 'Guided path',
+    pathId: item?.providerId ?? item?.pathId ?? `${item?.channel ?? item?.transportClass ?? 'path'}:${item?.source ?? index}`,
+    timestampMs: item?.timestampMs ?? Date.now()
+  };
+}
+
+async function sampleGuidedRawHttp(trigger) {
+  const families = await Promise.all([4, 6].map((family) => collectProviderObservations({
+    family,
+    providers: networkConfig.ipProviders[family],
+    timeoutMs: networkConfig.requestTimeoutMs,
+    trigger
+  })));
+  return families.flat();
+}
+
+function createGuidedStressController(profile, recordObservations, onStressUpdate) {
+  guidedStressSampleCursor = 0;
+  return createAggressiveLeakTest({
+    config: appConfig,
+    initialBaseline: { 4: [], 6: [] },
+    guidedProfile: profile,
+    environment: window,
+    sampleHttp: async () => Promise.all([
+      runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }),
+      runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })
+    ]),
+    sampleHttpObservations: sampleGuidedRawHttp,
+    sampleStun: () => Promise.all(networkConfig.stunDestinations.map(async (destination) => ({
+      server: destination.urls[0], group: destination.group,
+      result: await runWebRtcTest({ stunUrls: destination.urls, timeoutMs: networkConfig.webrtcTimeoutMs })
+    }))),
+    sampleWebRtcStress: (trigger) => runWebRtcStress({ destinations: networkConfig.stunDestinations, timeoutMs: networkConfig.webrtcTimeoutMs, trigger }),
+    sampleEcho: () => runHttpInspection({ endpoint: networkConfig.httpEchoEndpoint, timeoutMs: networkConfig.advancedTimeoutMs }),
+    sampleTls: () => runTlsFingerprint({ endpoint: networkConfig.tlsReflectorEndpoint, timeoutMs: networkConfig.fingerprintTimeoutMs }),
+    onUpdate: (state) => {
+      const fresh = (state.samples ?? []).slice(guidedStressSampleCursor);
+      guidedStressSampleCursor = state.samples?.length ?? guidedStressSampleCursor;
+      if (fresh.length) recordObservations(fresh.map(guidedObservationRow));
+      onStressUpdate?.();
+      runButton.disabled = state.status === 'running';
+      aggressiveElements.toggle.disabled = state.status === 'running';
+    }
+  });
+}
+
+async function startGuidedStress(profile, recordObservations, onStressUpdate) {
+  if (aggressive?.getState?.().status === 'running') aggressive.stop();
+  aggressive = null;
+  if (currentReport) currentReport.aggressive = null;
+  aggressiveMode = 'guided';
+  guidedStress = createGuidedStressController(profile, recordObservations, onStressUpdate);
+  await guidedStress.start();
+  return guidedStress.getState();
+}
+
+function handleGuidedChange({ report, findings }) {
+  guidedFindings = findings ?? [];
+  if (currentReport) currentReport.guidedLeak = report;
+  if (guidedRuntime?.isGuidedStress?.()) aggressiveMode = 'guided';
+  const isRunning = guidedStressRunning();
+  runButton.disabled = running || isRunning || aggressive?.getState?.().status === 'running';
+  aggressiveElements.toggle.disabled = isRunning;
+  reassess();
+}
+
+guidedRuntime = createGuidedAppRuntime({
+  storage: window.sessionStorage,
+  networkConfig,
+  document,
+  navigator,
+  runWebRtcTest,
+  runHttpInspection,
+  runTlsFingerprint,
+  ensureCore: async () => { if (!currentReport) await runCore(); },
+  startStress: startGuidedStress,
+  stopStress: () => guidedStress?.stop?.(),
+  getStressState: () => guidedStress?.getState?.() ?? null,
+  onChange: handleGuidedChange
+});
+
 async function copyReport() {
   if (!currentReport) return;
+  currentReport.guidedLeak = guidedRuntime?.getReport?.() ?? currentReport.guidedLeak ?? null;
   const value = JSON.stringify(currentReport, null, 2);
   try { await navigator.clipboard.writeText(value); }
   catch { const area = document.createElement('textarea'); area.value = value; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); }
@@ -344,7 +444,9 @@ advancedDetails.addEventListener('toggle', () => { if (advancedDetails.open) run
 advancedButton.addEventListener('click', () => runAdvanced(true));
 monitorToggle.addEventListener('click', async () => { if (!monitor) monitor = createMonitor(); if (monitor.getState().running) monitor.stop(); else await monitor.start(); });
 aggressiveElements.toggle?.addEventListener('click', async () => {
+  if (guidedStressRunning()) return;
   if (!currentReport) await runCore();
+  aggressiveMode = 'unguided';
   if (!aggressive || aggressive.getState().status !== 'running') { aggressive = createAggressiveController(); await aggressive.start(); }
   else aggressive.stop();
 });

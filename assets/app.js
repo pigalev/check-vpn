@@ -1,7 +1,7 @@
 import { appConfig, features, getEnabledChecks, networkConfig } from './config.js';
 import { runIpTest } from './ip-tests.js';
 import { runGeoIpLookup } from './geoip.js';
-import { countryCodeToFlag } from './country.js';
+import { countryCodeToFlagUrl } from './country.js';
 import { describeCandidate, runWebRtcTest } from './webrtc-test.js';
 import { collectBrowserInfo } from './browser-info.js';
 import { assessResults } from './assessment.js';
@@ -95,7 +95,8 @@ function addDetailList(body, rows) {
     key.textContent = label;
     const content = document.createElement('span');
     content.className = 'detail-value';
-    content.textContent = value;
+    if (value instanceof Node) content.append(value);
+    else content.textContent = value;
     row.append(key, content);
     list.append(row);
   }
@@ -112,9 +113,26 @@ function renderRunning(name) {
 function formatGeoLocation(geo) {
   if (!geo || geo.status !== 'complete') return null;
   const place = [geo.city, geo.region].filter(Boolean).join(', ');
-  const location = [geo.country, place].filter(Boolean).join(' · ');
-  const flag = countryCodeToFlag(geo.countryCode);
-  return [flag, location].filter(Boolean).join(' ');
+  return [geo.country, place].filter(Boolean).join(' · ');
+}
+
+function buildLocationContent(geo) {
+  const location = document.createElement('span');
+  location.className = 'location-value';
+  const flagUrl = countryCodeToFlagUrl(geo?.countryCode);
+  if (flagUrl) {
+    const flag = document.createElement('img');
+    flag.className = 'country-flag';
+    flag.src = flagUrl;
+    flag.alt = '';
+    flag.setAttribute('aria-hidden', 'true');
+    flag.addEventListener('error', () => flag.remove(), { once: true });
+    location.append(flag);
+  }
+  const text = document.createElement('span');
+  text.textContent = formatGeoLocation(geo) || 'Unknown';
+  location.append(text);
+  return location;
 }
 
 function renderIp(name, result) {
@@ -131,7 +149,7 @@ function renderIp(name, result) {
   const geo = result.geo;
   const rows = [];
   if (geo?.status === 'complete') {
-    rows.push(['Location', formatGeoLocation(geo) || 'Unknown']);
+    rows.push(['Location', buildLocationContent(geo)]);
     rows.push(['Network', [geo.asn, geo.org].filter(Boolean).join(' · ') || 'Unknown']);
     if (geo.timezone) rows.push(['Timezone', geo.timezone]);
   } else {
@@ -151,13 +169,22 @@ function renderCandidate(body, candidate) {
 
   const address = document.createElement('p');
   address.className = 'candidate-address';
-  address.textContent = candidate.address;
+  address.textContent = candidate.classification === 'mdns' ? 'Hidden by browser' : candidate.address;
+
+  item.append(heading, address);
+
+  if (candidate.classification === 'mdns') {
+    const technicalAddress = document.createElement('p');
+    technicalAddress.className = 'candidate-technical-address';
+    technicalAddress.textContent = candidate.address;
+    item.append(technicalAddress);
+  }
 
   const meta = document.createElement('p');
   meta.className = 'candidate-meta';
   meta.textContent = description.meta;
+  item.append(meta);
 
-  item.append(heading, address, meta);
   if (description.note) {
     const note = document.createElement('p');
     note.className = 'candidate-note';

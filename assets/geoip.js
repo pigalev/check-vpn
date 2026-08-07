@@ -64,7 +64,7 @@ export function normalizeGeoIp(payload, expectedIp, kind = 'ipapi', source = {})
       city: payload.cityName,
       asn: payload.asn,
       org: payload.asnOrganization ?? payload.organization ?? payload.isp,
-      timezone: payload.timeZone
+      timezone: payload.timeZone ?? (Array.isArray(payload.timeZones) ? payload.timeZones[0] : null)
     };
   } else {
     if (payload.error === true) return emptyResult(expectedIp, 'error', cleanString(payload.reason) ?? 'Location lookup failed.', source);

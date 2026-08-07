@@ -9,8 +9,11 @@ import {
 
 test('parses a server-reflexive public candidate', () => {
   assert.deepEqual(
-    parseIceCandidate('candidate:1 1 udp 2122260223 203.0.113.10 54400 typ srflx raddr 192.168.1.5 rport 54400'),
-    { address: '203.0.113.10', port: 54400, family: 4, protocol: 'udp', type: 'srflx', classification: 'public' }
+    parseIceCandidate('candidate:1 1 udp 2122260223 8.8.8.8 54400 typ srflx raddr 192.168.1.5 rport 54400'),
+    {
+      address: '8.8.8.8', port: 54400, family: 4, protocol: 'udp', type: 'srflx', classification: 'public',
+      ipDetails: { family: 4, scope: 'global', public: true, transition: null, label: 'Public IPv4' }
+    }
   );
 });
 
@@ -18,6 +21,7 @@ test('parses an mDNS host candidate', () => {
   const result = parseIceCandidate('candidate:2 1 udp 2122194687 host-123.local 53544 typ host');
   assert.equal(result.classification, 'mdns');
   assert.equal(result.family, null);
+  assert.equal(result.ipDetails.public, false);
 });
 
 test('returns null for malformed candidates', () => {
@@ -25,7 +29,7 @@ test('returns null for malformed candidates', () => {
 });
 
 test('groups public srflx candidates as public addresses', () => {
-  const candidate = parseIceCandidate('candidate:1 1 udp 1 203.0.113.10 5000 typ srflx');
+  const candidate = parseIceCandidate('candidate:1 1 udp 1 8.8.8.8 5000 typ srflx');
   assert.equal(getCandidateGroup(candidate), 'public');
   assert.deepEqual(describeCandidate(candidate), {
     group: 'public',
@@ -49,6 +53,14 @@ test('groups private host candidates as local interfaces', () => {
   assert.match(describeCandidate(candidate).meta, /Private/);
 });
 
+test('groups CGNAT host candidates as local/shared rather than public', () => {
+  const candidate = parseIceCandidate('candidate:4 1 udp 1 100.64.10.20 5003 typ host');
+  assert.equal(candidate.classification, 'cgnat');
+  assert.equal(candidate.ipDetails.public, false);
+  assert.equal(getCandidateGroup(candidate), 'local');
+  assert.match(describeCandidate(candidate).meta, /CGNAT/);
+});
+
 test('collects and deduplicates candidates', async () => {
   class FakePeerConnection {
     static closed = false;
@@ -57,7 +69,7 @@ test('collects and deduplicates candidates', async () => {
     async createOffer() { return { type: 'offer', sdp: 'fake' }; }
     async setLocalDescription() {
       queueMicrotask(() => {
-        const candidate = { candidate: 'candidate:1 1 udp 1 203.0.113.10 5000 typ srflx' };
+        const candidate = { candidate: 'candidate:1 1 udp 1 8.8.8.8 5000 typ srflx' };
         this.onicecandidate?.({ candidate });
         this.onicecandidate?.({ candidate });
         this.onicecandidate?.({ candidate: null });
@@ -73,7 +85,7 @@ test('collects and deduplicates candidates', async () => {
   });
 
   assert.equal(result.status, 'complete');
-  assert.deepEqual(result.publicAddresses, ['203.0.113.10']);
+  assert.deepEqual(result.publicAddresses, ['8.8.8.8']);
   assert.equal(result.candidates.length, 1);
   assert.equal(FakePeerConnection.closed, true);
 });

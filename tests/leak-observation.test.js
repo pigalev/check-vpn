@@ -20,7 +20,9 @@ function observe(state, overrides = {}) {
     family: 4,
     address: '77.110.99.186',
     channel: 'http',
+    transportClass: 'http',
     source: 'HTTP consensus',
+    providerGroup: 'consensus',
     trigger: 'scheduled',
     successful: true,
     ...overrides
@@ -33,12 +35,31 @@ test('baseline address does not create exposure', () => {
 });
 
 test('unexpected IPv4 creates one exposure and merges independent sources', () => {
-  let state = observe(baseState(), { timestampMs: 4000, address: '95.25.44.18' });
-  state = observe(state, { timestampMs: 6000, address: '95.25.44.18', channel: 'stun', source: 'Google STUN' });
+  let state = observe(baseState(), { timestampMs: 4000, address: '95.25.44.18', relation: 'unknown-public' });
+  state = observe(state, { timestampMs: 6000, address: '95.25.44.18', relation: 'unknown-public', channel: 'stun', transportClass: 'stun', source: 'Google STUN', providerGroup: 'google' });
   assert.equal(state.exposures.length, 1);
   assert.equal(state.exposures[0].address, '95.25.44.18');
   assert.deepEqual(state.exposures[0].sources.sort(), ['Google STUN', 'HTTP consensus']);
   assert.equal(state.exposures[0].observationCount, 2);
+  assert.deepEqual(state.exposures[0].transportClasses.sort(), ['http', 'stun']);
+  assert.deepEqual(state.exposures[0].providerGroups.sort(), ['consensus', 'google']);
+  assert.equal(state.exposures[0].perChannelCounts.http, 1);
+  assert.equal(state.exposures[0].perChannelCounts.stun, 1);
+  assert.equal(state.exposures[0].firstDetector, 'HTTP consensus');
+  assert.equal(state.exposures[0].confirmationLevel, 'confirmed-unknown');
+});
+
+test('single known-real exposure is conclusive but duration remains unknown', () => {
+  const state = observe(baseState(), {
+    timestampMs: 4000,
+    address: '95.25.44.18',
+    relation: 'known-real',
+    source: 'Provider C',
+    providerGroup: 'c'
+  });
+  assert.equal(state.exposures[0].relation, 'known-real');
+  assert.equal(state.exposures[0].confirmationLevel, 'known-real');
+  assert.equal(state.exposures[0].approxExposureMs, null);
 });
 
 test('public IPv6 appearing after absent baseline is leak evidence', () => {
@@ -46,6 +67,7 @@ test('public IPv6 appearing after absent baseline is leak evidence', () => {
     timestampMs: 5000,
     family: 6,
     address: '2606:4700:4700::1111',
+    relation: 'unknown-public',
     source: 'HTTP IPv6'
   });
   assert.equal(next.exposures.length, 1);
@@ -55,15 +77,15 @@ test('public IPv6 appearing after absent baseline is leak evidence', () => {
 test('non-public and failed observations never create exposure', () => {
   let state = baseState();
   for (const [family, address] of [[4, '100.64.1.1'], [4, '192.168.1.1'], [6, 'fd00::1'], [6, 'fe80::1']]) {
-    state = observe(state, { family, address, timestampMs: state.samples.length * 1000 + 1000 });
+    state = observe(state, { family, address, relation: 'non-public', timestampMs: state.samples.length * 1000 + 1000 });
   }
-  state = observe(state, { address: '95.25.44.18', successful: false });
+  state = observe(state, { address: '95.25.44.18', relation: 'unknown-public', successful: false });
   assert.equal(state.exposures.length, 0);
 });
 
 test('baseline restoration closes approximate exposure window', () => {
-  let state = observe(baseState(), { timestampMs: 4000, address: '95.25.44.18' });
-  state = observe(state, { timestampMs: 9000, address: '77.110.99.186' });
+  let state = observe(baseState(), { timestampMs: 4000, address: '95.25.44.18', relation: 'unknown-public' });
+  state = observe(state, { timestampMs: 9000, address: '77.110.99.186', relation: 'known-vpn' });
   assert.equal(state.exposures[0].baselineRestoredAtMs, 9000);
   assert.equal(state.exposures[0].approxExposureMs, 5000);
 });
@@ -92,7 +114,7 @@ test('large scheduler gap makes an otherwise clean result inconclusive', () => {
 });
 
 test('captured leak outranks insufficient coverage', () => {
-  let state = observe(baseState(), { timestampMs: 4000, address: '95.25.44.18' });
+  let state = observe(baseState(), { timestampMs: 4000, address: '95.25.44.18', relation: 'unknown-public' });
   state = { ...state, schedulerAttempts: [{ intendedMs: 0, actualMs: 0 }] };
   const result = finalizeLeakResult(state, config, 10000);
   assert.equal(result.label, 'Leak detected');

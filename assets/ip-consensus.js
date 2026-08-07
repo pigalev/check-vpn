@@ -12,7 +12,7 @@ function extractAddress(payload, kind) {
   return payload.ip ?? payload.address ?? null;
 }
 
-async function runProvider({ provider, family, timeoutMs, fetchImpl }) {
+export async function runIpProvider({ provider, family, timeoutMs, fetchImpl = fetch }) {
   const started = performance.now?.() ?? Date.now();
   try {
     let payload;
@@ -36,7 +36,7 @@ async function runProvider({ provider, family, timeoutMs, fetchImpl }) {
 }
 
 export async function runIpConsensus({ family, providers, timeoutMs, fetchImpl = fetch }) {
-  const sources = await Promise.all(providers.map((provider) => runProvider({ provider, family, timeoutMs, fetchImpl })));
+  const sources = await Promise.all(providers.map((provider) => runIpProvider({ provider, family, timeoutMs, fetchImpl })));
   const successful = sources.filter((source) => source.status === 'complete');
   const counts = {};
   for (const source of successful) counts[source.address] = (counts[source.address] ?? 0) + 1;

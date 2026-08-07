@@ -10,6 +10,7 @@ export const features = Object.freeze({
   geoip: true,
   advanced: true,
   monitor: true,
+  monitorEnrichment: true,
   dns: false,
   torrent: false,
   email: false
@@ -45,6 +46,7 @@ export const networkConfig = Object.freeze({
     Object.freeze({ id: 'google', label: 'Google', kind: 'google', url: 'https://dns.google/resolve' })
   ]),
   httpEchoEndpoint: 'https://httpbin.org/anything',
+  tlsReflectorEndpoint: 'https://tls.peet.ws/api/all',
   stunUrls: Object.freeze([
     'stun:stun.cloudflare.com:3478',
     'stun:stun.l.google.com:19302'
@@ -52,6 +54,7 @@ export const networkConfig = Object.freeze({
   requestTimeoutMs: 6000,
   geoIpTimeoutMs: 6000,
   advancedTimeoutMs: 7000,
+  fingerprintTimeoutMs: 7000,
   webrtcTimeoutMs: 7000
 });
 

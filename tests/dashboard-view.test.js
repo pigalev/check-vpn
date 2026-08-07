@@ -49,6 +49,16 @@ test('IPv6 becomes primary when IPv4 is unavailable', () => {
   assert.equal(view.primary.address, '2a00:1450::1');
 });
 
+test('both public families absent produce a compact unavailable hero state', () => {
+  const view = buildConnectionView({
+    ipv4: { family:4, address:null, ipFinal:true },
+    ipv6: { family:6, address:null, ipFinal:true }
+  });
+  assert.equal(view.primary.address, null);
+  assert.equal(view.primary.state, 'not-detected');
+  assert.equal(view.secondary.state, 'not-detected');
+});
+
 test('provisional address stays visible with checking states', () => {
   const view = buildConnectionView({
     ipv4: { family:4, address:'128.71.33.91', ipFinal:false, geoPending:true, geo:null },
@@ -109,4 +119,15 @@ test('unavailable advanced row is one concise state', () => {
   assert.equal(view.statusLabel, 'Unavailable');
   assert.equal(view.expandable, false);
   assert.equal(view.fields.length, 0);
+});
+
+test('successful advanced row is expandable and keeps its compact summary', () => {
+  const view = buildAdvancedRowView({
+    id:'tls', title:'TLS fingerprint',
+    result:{ status:'complete', observedIp:'198.51.100.4', tlsVersion:'TLS 1.3', ja3Hash:'abc', ja4:'def' },
+    summary:'TLS 1.3 · JA4 available'
+  });
+  assert.equal(view.statusLabel, 'Complete');
+  assert.equal(view.expandable, true);
+  assert.equal(view.summary, 'TLS 1.3 · JA4 available');
 });

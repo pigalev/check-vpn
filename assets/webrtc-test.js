@@ -67,6 +67,24 @@ export function summarizeCandidates(candidates = []) {
   return summary;
 }
 
+export function summarizeWebRtcPrivacy(candidates = [], trustedHttpAddresses = new Set()) {
+  const trusted = trustedHttpAddresses instanceof Set ? trustedHttpAddresses : new Set(trustedHttpAddresses ?? []);
+  const publicMismatches = [];
+  let numericPrivateIpv4Exposed = false;
+  let cgnatExposed = false;
+  let privateIpv6Exposed = false;
+  let mdnsProtection = false;
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (candidate.classification === 'mdns') mdnsProtection = true;
+    if (candidate.family === 4 && candidate.classification === 'private') numericPrivateIpv4Exposed = true;
+    if (candidate.family === 4 && candidate.classification === 'cgnat') cgnatExposed = true;
+    if (candidate.family === 6 && ['ula', 'link-local'].includes(candidate.classification)) privateIpv6Exposed = true;
+    if (candidate.classification === 'public' && !trusted.has(candidate.address) && !publicMismatches.includes(candidate.address)) publicMismatches.push(candidate.address);
+  }
+  return { numericPrivateIpv4Exposed, cgnatExposed, privateIpv6Exposed, mdnsProtection, publicMismatches };
+}
+
 export async function runWebRtcTest({ stunUrls, timeoutMs, RTCPeerConnectionImpl = globalThis.RTCPeerConnection } = {}) {
   if (typeof RTCPeerConnectionImpl !== 'function') return { status: 'unavailable', candidates: [], publicAddresses: [], summary: summarizeCandidates([]), error: 'WebRTC is not available in this browser.' };
   let peer;

@@ -61,6 +61,9 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .detail-row { display: grid; grid-template-columns: minmax(92px, 130px) minmax(0, 1fr); gap: 12px; font-size: .88rem; line-height: 1.45; min-width: 0; }
 .detail-label { color: var(--muted); }
 .detail-value { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.location-value { display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: 100%; }
+.location-value > span { min-width: 0; overflow-wrap: anywhere; }
+.country-flag { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; flex: 0 0 auto; }
 .webrtc-layout { min-width: 0; }
 .webrtc-candidates, .webrtc-comparison { min-width: 0; }
 .candidate-list { display: grid; gap: 0; margin-top: 12px; min-width: 0; }
@@ -68,6 +71,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .candidate-item:first-child { border-top: 0; }
 .candidate-heading { margin: 0 0 4px; font-size: .78rem; font-weight: 750; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .candidate-address { min-width: 0; margin: 0; overflow-wrap: anywhere; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .98rem; }
+.candidate-technical-address { margin: 4px 0 0; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; line-height: 1.4; overflow-wrap: anywhere; word-break: break-word; }
 .candidate-meta, .candidate-note { margin: 4px 0 0; color: var(--muted); font-size: .82rem; line-height: 1.45; overflow-wrap: anywhere; }
 .comparison-block { margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--border); min-width: 0; }
 .section-label { margin: 0; color: var(--muted); font-size: .78rem; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; }
@@ -97,6 +101,8 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   .summary { align-items: flex-start; flex-direction: column; gap: 9px; padding: 14px; }
   .result-card { padding: 15px; }
   .detail-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .location-value { align-items: flex-start; }
+  .country-flag { margin-top: 2px; }
   .candidate-item { padding: 10px 0; }
   .report-actions { margin-top: 14px; }
   .secondary-button { width: 100%; min-height: 44px; }

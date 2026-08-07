@@ -1,26 +1,27 @@
-export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [], monitorFindings = [] }) {
-  const findings = [
-    ...(privacy?.findings ?? []),
-    ...networkFindings,
-    ...monitorFindings
-  ];
+function dedupe(findings) {
+  const map = new Map();
+  for (const finding of findings) if (finding?.id && !map.has(finding.id)) map.set(finding.id, finding);
+  return [...map.values()];
+}
 
-  const ipDisagreement = [ipv4, ipv6].flatMap((result) => {
-    if (!result?.agreement || result.agreement.agree !== false) return [];
-    return [{ id: `ipv${result.family}-source-disagreement`, severity: 'review', category: 'ip', summary: `IPv${result.family} providers disagree`, details: 'Independent public-IP sources returned different addresses.', sources: ['http-ip'] }];
-  });
-  findings.push(...ipDisagreement);
+export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [], monitorFindings = [] }) {
+  const findings = [ ...(privacy?.findings ?? []), ...networkFindings, ...monitorFindings ];
+  const httpAddresses = new Set([ipv4?.address, ipv6?.address].filter(Boolean));
+  const rtcMismatch = (webrtc?.publicAddresses ?? []).filter((address) => httpAddresses.size && !httpAddresses.has(address));
+  if (rtcMismatch.length) findings.push({ id: 'webrtc-public-mismatch', severity: 'leak', category: 'network', summary: 'WebRTC exposed a different public address', details: rtcMismatch.join(', '), sources: ['webrtc', 'http'] });
 
   for (const result of [ipv4, ipv6]) {
+    if (result?.agreement?.agree === false) findings.push({ id: `ipv${result.family}-source-disagreement`, severity: 'review', category: 'ip', summary: `IPv${result.family} providers disagree`, details: 'Independent public-IP sources returned different addresses.', sources: ['http-ip'] });
     if (result?.geo?.agreement?.countryAgree === false) findings.push({ id: `ipv${result.family}-geo-country-disagreement`, severity: 'review', category: 'geoip', summary: `IPv${result.family} GeoIP country disagreement`, details: 'GeoIP providers returned different countries.', sources: ['geoip'] });
   }
 
+  const unique = dedupe(findings);
   const httpComplete = Boolean(ipv4?.address || ipv6?.address);
   const webRtcComplete = webrtc?.status === 'complete';
-  const hasLeak = findings.some((finding) => finding.severity === 'leak');
-  const hasReview = findings.some((finding) => finding.severity === 'review');
-  if (hasLeak) return { status: 'leak', message: 'A public-address exposure or tunnel-bypass signal was detected.', findings };
-  if (hasReview) return { status: 'review', message: 'No confirmed leak, but one or more inconsistencies deserve review.', findings };
-  if (!httpComplete || !webRtcComplete) return { status: 'incomplete', message: 'No confirmed leak was found, but core checks were incomplete.', findings };
-  return { status: 'protected', message: 'No public address mismatch or bypass signal detected.', findings };
+  const hasLeak = unique.some((finding) => finding.severity === 'leak');
+  const hasReview = unique.some((finding) => finding.severity === 'review');
+  if (hasLeak) return { status: 'leak', message: 'A public-address exposure or tunnel-bypass signal was detected.', findings: unique };
+  if (hasReview) return { status: 'review', message: 'No confirmed leak, but one or more inconsistencies deserve review.', findings: unique };
+  if (!httpComplete || !webRtcComplete) return { status: 'incomplete', message: 'No confirmed leak was found, but core checks were incomplete.', findings: unique };
+  return { status: 'protected', message: 'No public address mismatch or bypass signal detected.', findings: unique };
 }

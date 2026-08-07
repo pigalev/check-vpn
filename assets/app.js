@@ -1,6 +1,6 @@
 import { appConfig, features, networkConfig } from './config.js';
-import { runIpConsensus } from './ip-consensus.js';
-import { runGeoIpConsensus } from './geoip.js';
+import { runIpConsensus, runIpConsensusProgressive } from './ip-consensus.js';
+import { runGeoIpConsensus, runGeoIpConsensusProgressive } from './geoip.js';
 import { countryCodeToFlagUrl } from './country.js';
 import { describeCandidate, runWebRtcTest, summarizeWebRtcPrivacy } from './webrtc-test.js';
 import { collectBrowserInfo } from './browser-info.js';
@@ -106,17 +106,28 @@ function locationNode(geo) {
 function hasGeo(geo) { return geo && ['complete', 'partial'].includes(geo.status); }
 
 function renderIp(name, result) {
-  const body = bodyFor(name, result?.address ? 'Complete' : 'Unavailable');
-  if (!result?.address) { text(body, `IPv${result?.family ?? ''} connectivity was not detected.`); return; }
+  const hasAddress = Boolean(result?.address);
+  const status = hasAddress ? (result?.ipFinal === false ? 'Detected' : 'Complete') : (result?.ipFinal ? 'Unavailable' : 'Running');
+  const body = bodyFor(name, status);
+  if (!hasAddress) {
+    text(body, result?.ipFinal ? `IPv${result?.family ?? ''} connectivity was not detected.` : `Checking IPv${result?.family ?? ''} connectivity…`);
+    return;
+  }
   text(body, result.address, 'card-value');
-  const detailRows = [['IP sources', `${result.agreement.available}/${result.agreement.total}${result.agreement.agree ? ' · agree' : ' · differ'}`]];
+  const ipSources = result.agreement
+    ? `${result.agreement.available}/${result.agreement.total}${result.agreement.agree ? ' · agree' : ' · differ'}`
+    : 'Checking…';
+  const detailRows = [['IP sources', ipSources]];
   if (hasGeo(result.geo)) {
     detailRows.unshift(['Location', locationNode(result.geo)], ['Network', [result.geo.asn, result.geo.org].filter(Boolean).join(' · ') || 'Unknown']);
     if (result.geo.timezone) detailRows.push(['Timezone', result.geo.timezone]);
-    detailRows.push(['GeoIP', `${result.geo.agreement?.available ?? 0}/${result.geo.agreement?.total ?? 0}${result.geo.differences?.length ? ' · differ' : ' · agree'}`]);
-  } else detailRows.unshift(['Location', 'Unavailable']);
+    detailRows.push(['GeoIP', result.geoFinal
+      ? `${result.geo.agreement?.available ?? 0}/${result.geo.agreement?.total ?? 0}${result.geo.differences?.length ? ' · differ' : ' · agree'}`
+      : 'Checking…']);
+  } else if (result.geoPending) detailRows.unshift(['Location', 'Locating…']);
+  else detailRows.unshift(['Location', 'Unavailable']);
   rows(body, detailRows);
-  if (!result.agreement.agree) text(body, 'Public-IP providers returned different addresses.', 'inline-warning');
+  if (result.agreement && !result.agreement.agree) text(body, 'Public-IP providers returned different addresses.', 'inline-warning');
 }
 
 function renderWebRtc(result, ipv4, ipv6) {
@@ -152,11 +163,6 @@ function renderPrivacy(browser, privacy) {
   const body = bodyFor('privacy', 'Complete'); text(body, browser.timezone || 'Timezone unavailable', 'card-value');
   rows(body, [['IP timezone', privacy.ipTimezones.join(', ') || 'Unavailable'], ['Timezone', privacy.timezoneMatch == null ? 'Unknown' : privacy.timezoneMatch ? 'Match' : 'Mismatch'], ['Language', browser.languages?.join(', ') || browser.language || 'Unknown'], ['Platform', browser.platform || 'Unknown'], ['Secure context', browser.secureContext == null ? 'Unknown' : browser.secureContext ? 'Yes' : 'No'], ['GPC', browser.gpc == null ? 'Unavailable' : browser.gpc ? 'Enabled' : 'Disabled'], ['DNT', browser.doNotTrack ?? 'Unavailable']]);
   if (privacy.timezoneMatch === false) text(body, 'Browser timezone differs from IP timezone.', 'inline-warning');
-}
-
-async function enrich(result) {
-  if (!result?.address || !features.geoip) return { ...result, geo: null };
-  return { ...result, geo: await runGeoIpConsensus({ ip: result.address, providers: networkConfig.geoIpProviders, timeoutMs: networkConfig.geoIpTimeoutMs }) };
 }
 
 function guidedStressRunning() { return guidedStress?.getState?.().status === 'running'; }
@@ -197,17 +203,104 @@ function renderOverall(assessment) {
 
 async function runCore() {
   if (running || aggressive?.getState?.().status === 'running' || guidedStressRunning()) return;
-  running = true; runButton.disabled = true; copyButton.disabled = true; currentRunId += 1; advancedRunId = null; advancedResults.replaceChildren();
+  running = true; runButton.disabled = true; copyButton.disabled = true; currentRunId += 1;
+  const expectedRunId = currentRunId;
+  advancedRunId = null; advancedResults.replaceChildren();
   overallStatus.textContent = 'Running'; overallStatus.dataset.status = 'running'; overallMessage.textContent = 'Running core diagnostics.'; for (const name of cards.keys()) bodyFor(name, 'Running');
-  const [r4, r6, webrtc] = await Promise.all([
-    runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }),
-    runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs }),
-    runWebRtcTest({ stunUrls: networkConfig.stunUrls, timeoutMs: networkConfig.webrtcTimeoutMs })
+
+  const displayedAddress = { 4: null, 6: null };
+  const earlyGeo = new Map();
+  const geoPromises = new Map();
+  const cardName = (family) => family === 4 ? 'ipv4' : 'ipv6';
+
+  function locate(address, family) {
+    if (!address || !features.geoip) return Promise.resolve(null);
+    if (!geoPromises.has(address)) {
+      geoPromises.set(address, runGeoIpConsensusProgressive({
+        ip: address,
+        providers: networkConfig.geoIpProviders,
+        timeoutMs: networkConfig.geoIpTimeoutMs,
+        onFirstUsable: (geo) => {
+          if (currentRunId !== expectedRunId || displayedAddress[family] !== address) return;
+          earlyGeo.set(address, geo);
+          renderIp(cardName(family), {
+            family, address, agreement: null, geo,
+            ipFinal: false, geoPending: true, geoFinal: false
+          });
+        }
+      }));
+    }
+    return geoPromises.get(address);
+  }
+
+  function handleFirstIp(family, source) {
+    if (currentRunId !== expectedRunId) return;
+    displayedAddress[family] = source.address;
+    renderIp(cardName(family), {
+      family, address: source.address, agreement: null, geo: null,
+      ipFinal: false, geoPending: features.geoip, geoFinal: false
+    });
+    void locate(source.address, family);
+  }
+
+  const ipv4Promise = runIpConsensusProgressive({
+    family: 4,
+    providers: networkConfig.ipProviders[4],
+    timeoutMs: networkConfig.requestTimeoutMs,
+    onFirstValid: (source) => handleFirstIp(4, source)
+  });
+  const ipv6Promise = runIpConsensusProgressive({
+    family: 6,
+    providers: networkConfig.ipProviders[6],
+    timeoutMs: networkConfig.requestTimeoutMs,
+    onFirstValid: (source) => handleFirstIp(6, source)
+  });
+  const webrtcPromise = runWebRtcTest({ stunUrls: networkConfig.stunUrls, timeoutMs: networkConfig.webrtcTimeoutMs }).then((result) => {
+    if (currentRunId === expectedRunId) {
+      renderWebRtc(
+        result,
+        displayedAddress[4] ? { address: displayedAddress[4] } : null,
+        displayedAddress[6] ? { address: displayedAddress[6] } : null
+      );
+    }
+    return result;
+  });
+
+  async function finalizeFamily(family, ipPromise) {
+    const result = await ipPromise;
+    if (currentRunId !== expectedRunId) return null;
+    displayedAddress[family] = result.address ?? null;
+    if (!result.address) {
+      const finalResult = { ...result, geo: null, ipFinal: true, geoPending: false, geoFinal: true };
+      renderIp(cardName(family), finalResult);
+      return finalResult;
+    }
+
+    renderIp(cardName(family), {
+      ...result,
+      geo: earlyGeo.get(result.address) ?? null,
+      ipFinal: true,
+      geoPending: features.geoip,
+      geoFinal: false
+    });
+    const geo = await locate(result.address, family);
+    if (currentRunId !== expectedRunId || displayedAddress[family] !== result.address) return null;
+    const finalResult = { ...result, geo, ipFinal: true, geoPending: false, geoFinal: true };
+    renderIp(cardName(family), finalResult);
+    return finalResult;
+  }
+
+  const [ipv4, ipv6, webrtc] = await Promise.all([
+    finalizeFamily(4, ipv4Promise),
+    finalizeFamily(6, ipv6Promise),
+    webrtcPromise
   ]);
-  const [ipv4, ipv6] = await Promise.all([enrich(r4), enrich(r6)]); const browser = collectBrowserInfo(window); const privacy = assessPrivacy({ browser, ipv4, ipv6 });
+  if (currentRunId !== expectedRunId || !ipv4 || !ipv6) return;
+
+  const browser = collectBrowserInfo(window); const privacy = assessPrivacy({ browser, ipv4, ipv6 });
   const networkFindings = assessAddressFamilies({ ipv4, ipv6, webrtc });
   const assessment = assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings, monitorFindings: [], aggressiveFindings: currentAggressiveFindings(), guidedFindings });
-  currentReport = { startedAt: new Date().toISOString(), runId: currentRunId, ipv4, ipv6, webrtc, browser, privacy, assessment, advanced: null, monitor: monitor?.getState?.() ?? null, aggressive: aggressive?.getState?.() ?? null, guidedLeak: guidedRuntime?.getReport?.() ?? null };
+  currentReport = { startedAt: new Date().toISOString(), runId: expectedRunId, ipv4, ipv6, webrtc, browser, privacy, assessment, advanced: null, monitor: monitor?.getState?.() ?? null, aggressive: aggressive?.getState?.() ?? null, guidedLeak: guidedRuntime?.getReport?.() ?? null };
   renderIp('ipv4', ipv4); renderIp('ipv6', ipv6); renderWebRtc(webrtc, ipv4, ipv6); renderPrivacy(browser, privacy); renderOverall(assessment); running = false; runButton.disabled = guidedStressRunning(); copyButton.disabled = false;
 }
 

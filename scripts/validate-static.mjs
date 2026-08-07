@@ -19,6 +19,11 @@ const required = [
   'assets/network-intelligence.js',
   'assets/reverse-dns.js',
   'assets/http-inspection.js',
+  'assets/tls-fingerprint.js',
+  'assets/fingerprint-exposure.js',
+  'assets/environment-consistency.js',
+  'assets/stun-mapping.js',
+  'assets/monitor-enrichment.js',
   'assets/monitor.js',
   'assets/assessment.js',
   'assets/app.js'

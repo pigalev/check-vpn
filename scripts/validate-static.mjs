@@ -70,6 +70,13 @@ const guidedProfileSource = await readFile(resolve(root, 'assets/guided-leak-pro
 if (/\blocalStorage\b/.test(guidedProfileSource)) throw new Error('Guided leak profile must not use localStorage');
 const appSource = await readFile(resolve(root, 'assets/app.js'), 'utf8');
 if (!/storage:\s*window\.sessionStorage/.test(appSource)) throw new Error('Guided leak profile must be wired to current-tab sessionStorage');
+if (!/runIpConsensusProgressive/.test(appSource)) throw new Error('Core must use progressive public-IP consensus');
+if (!/runGeoIpConsensusProgressive/.test(appSource)) throw new Error('Core must use progressive GeoIP consensus');
+
+const configSource = await readFile(resolve(root, 'assets/config.js'), 'utf8');
+if (!/id:\s*['"]ipapiis['"]/.test(configSource) || !/https:\/\/api\.ipapi\.is\/\?q=\{ip\}/.test(configSource)) {
+  throw new Error('RU-friendly ipapi.is GeoIP provider must remain configured');
+}
 
 const importPattern = /from\s+['"](\.\/.+?)['"]/g;
 for (const file of required.filter((name) => name.endsWith('.js'))) {

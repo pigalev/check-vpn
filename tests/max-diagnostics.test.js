@@ -50,13 +50,15 @@ test('privacy assessment reports timezone mismatch as review only', () => {
   assert.equal(result.findings[0].severity, 'review');
 });
 
-test('cross-family assessment treats country plus ASN difference as leak evidence', () => {
+test('cross-family metadata difference is review rather than confirmed leak', () => {
   const findings = assessAddressFamilies({
     ipv4: { address: '203.0.113.10', geo: { countryCode: 'DE', asn: 'AS1', org: 'VPN A' } },
     ipv6: { address: '2001:db8::10', geo: { countryCode: 'RU', asn: 'AS2', org: 'ISP B' } },
     webrtc: { publicAddresses: ['203.0.113.10'] }
   });
-  assert.equal(findings.some((f) => f.id === 'ipv6-bypass' && f.severity === 'leak'), true);
+  const finding = findings.find((f) => f.id === 'possible-ipv6-bypass');
+  assert.equal(finding?.severity, 'review');
+  assert.equal(findings.some((f) => f.severity === 'leak'), false);
 });
 
 test('network intelligence normalizes security and ASN fields', () => {
@@ -113,11 +115,20 @@ test('WebRTC summary counts candidate types and transports', () => {
   assert.deepEqual(summary.publicAddresses, ['203.0.113.10', '2001:db8::1']);
 });
 
-test('monitor records transient address changes and returns leak finding', () => {
+test('monitor records real address changes and returns leak finding', () => {
   let state = reduceMonitorState(createMonitorState(), { type: 'start', timestamp: 't0' });
-  state = reduceMonitorState(state, { type: 'sample', timestamp: 't1', sample: { ipv4: { address: '203.0.113.10' }, ipv6: { address: null } } });
-  state = reduceMonitorState(state, { type: 'sample', timestamp: 't2', sample: { ipv4: { address: '198.51.100.5' }, ipv6: { address: null } } });
-  state = reduceMonitorState(state, { type: 'sample', timestamp: 't3', sample: { ipv4: { address: '203.0.113.10' }, ipv6: { address: null } } });
+  state = reduceMonitorState(state, { type: 'sample', timestamp: 't1', sample: { ipv4: { status: 'complete', address: '203.0.113.10' }, ipv6: { status: 'unavailable', address: null } } });
+  state = reduceMonitorState(state, { type: 'sample', timestamp: 't2', sample: { ipv4: { status: 'complete', address: '198.51.100.5' }, ipv6: { status: 'unavailable', address: null } } });
+  state = reduceMonitorState(state, { type: 'sample', timestamp: 't3', sample: { ipv4: { status: 'complete', address: '203.0.113.10' }, ipv6: { status: 'unavailable', address: null } } });
   assert.equal(state.events.length, 2);
   assert.equal(monitorFindings(state)[0].severity, 'leak');
+});
+
+test('monitor ignores transient unavailable samples instead of inventing an IP change', () => {
+  let state = reduceMonitorState(createMonitorState(), { type: 'start', timestamp: 't0' });
+  state = reduceMonitorState(state, { type: 'sample', timestamp: 't1', sample: { ipv4: { status: 'complete', address: '203.0.113.10' }, ipv6: { status: 'unavailable', address: null } } });
+  state = reduceMonitorState(state, { type: 'sample', timestamp: 't2', sample: { ipv4: { status: 'unavailable', address: null }, ipv6: { status: 'unavailable', address: null } } });
+  assert.equal(state.current[4], '203.0.113.10');
+  assert.equal(state.events.length, 0);
+  assert.deepEqual(monitorFindings(state), []);
 });

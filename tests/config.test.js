@@ -32,6 +32,21 @@ test('network endpoints and timeouts are configured', () => {
   assert.ok(networkConfig.webrtcTimeoutMs >= 3000);
 });
 
+test('stress STUN destinations retain operator grouping', () => {
+  assert.equal(networkConfig.stunDestinations.length, 4);
+  assert.deepEqual(networkConfig.stunDestinations.map((item) => item.id), ['cloudflare', 'google-0', 'google-1', 'twilio']);
+  assert.deepEqual([...new Set(networkConfig.stunDestinations.map((item) => item.group))], ['cloudflare', 'google', 'twilio']);
+  for (const destination of networkConfig.stunDestinations) {
+    assert.ok(destination.urls.length > 0);
+    assert.ok(destination.urls.every((url) => url.startsWith('stun:')));
+  }
+});
+
+test('reconnect burst keeps approved sub-two-second offsets', () => {
+  assert.deepEqual([...appConfig.reconnectBurstOffsetsMs], [0, 250, 500, 1000, 2000, 4000]);
+  assert.deepEqual([...appConfig.reconnectWebRtcOffsetsMs], [0, 500, 2000, 4000]);
+});
+
 test('automatic checks are enabled', () => {
   assert.equal(appConfig.autoRun, true);
 });

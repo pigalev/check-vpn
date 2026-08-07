@@ -10,6 +10,7 @@ const required = [
   'assets/network.js',
   'assets/ip-tests.js',
   'assets/geoip.js',
+  'assets/country.js',
   'assets/webrtc-test.js',
   'assets/browser-info.js',
   'assets/assessment.js',

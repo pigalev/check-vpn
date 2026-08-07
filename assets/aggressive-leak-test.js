@@ -58,14 +58,14 @@ export function createAggressiveLeakTest({
     if (!active(runId)) return;
     for (const result of results ?? []) {
       const family = result?.family;
+      if (trigger === 'baseline' && result?.address && [4, 6].includes(family) && state.baseline[family].length === 0) {
+        state = { ...state, baseline: { ...state.baseline, [family]: [result.address] } };
+      }
       recordObservation({
         timestampMs: now(), family, address: result?.address ?? null, channel: 'http',
         source: family === 6 ? 'HTTP IPv6' : 'HTTP IPv4', trigger, successful: Boolean(result?.address),
         providerCoverage: result?.agreement ?? null
       }, runId);
-      if (trigger === 'baseline' && result?.address && [4, 6].includes(family) && !state.baseline[family].includes(result.address)) {
-        state = { ...state, baseline: { ...state.baseline, [family]: [...state.baseline[family], result.address] } };
-      }
     }
     emit();
   }
@@ -193,5 +193,15 @@ export function createAggressiveLeakTest({
     return copyState(state);
   }
 
-  return { start, stop, getState: () => copyState(state), handleNetworkEvent };
+  function replaceExposure(nextExposure, expectedRunId = currentRunId) {
+    if (!nextExposure?.key || expectedRunId !== currentRunId) return false;
+    const index = state.exposures.findIndex((item) => item.key === nextExposure.key);
+    if (index < 0) return false;
+    const exposures = state.exposures.map((item, itemIndex) => itemIndex === index ? { ...item, ...nextExposure } : item);
+    state = { ...state, exposures };
+    emit();
+    return true;
+  }
+
+  return { start, stop, getState: () => copyState(state), handleNetworkEvent, replaceExposure };
 }

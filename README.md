@@ -6,9 +6,9 @@ Static browser-based VPN leak and privacy diagnostics for GitHub Pages.
 
 Core diagnostics start automatically when the page opens. **Run again** repeats the core run and clears cached Advanced results.
 
-- Multi-source public IPv4 consensus
-- Multi-source public IPv6 consensus
-- Multi-provider GeoIP for detected public addresses
+- Progressive multi-source public IPv4 consensus
+- Progressive multi-source public IPv6 consensus
+- Progressive multi-provider GeoIP for detected public addresses
 - WebRTC ICE candidates, including public, private, CGNAT/shared, IPv6 local, relay, and mDNS-protected candidates
 - HTTP public-address vs WebRTC comparison
 - IPv4 vs IPv6 network-metadata comparison
@@ -16,7 +16,13 @@ Core diagnostics start automatically when the page opens. **Run again** repeats 
 - Compact browser privacy summary
 - Structured result severity: `Protected`, `Review`, `Leak detected`, or `Incomplete`
 
-A third-party outage does not erase data returned by other providers. If only one public-IP or GeoIP source works, its result remains visible with reduced source coverage.
+Public IP and location cards use progressive rendering. The first valid IPv4/IPv6 returned by a configured provider is shown immediately while the remaining public-IP providers continue in the background. As soon as that address is known, all configured GeoIP providers start in parallel and the first usable country/region/city result is displayed immediately. The card is then updated with the completed IP and GeoIP consensus, so slow or blocked providers do not hold the first visible result until their timeout.
+
+Provisional values are display-only. The final report and **Copy JSON** use the completed consensus results. If the final IP consensus selects a different address from the first provisional response, stale GeoIP results for the old address are ignored and geolocation is resolved for the final address instead.
+
+The active GeoIP race currently uses `ipapi.co`, `ipwho.is`, `FreeIPAPI`, and `ipapi.is`. The code can normalize Sypex Geo responses, but the Sypex regional endpoint is not enabled in the static configuration until cross-origin browser access can be verified reliably from the deployed page. No JSONP or `no-cors` workaround is used.
+
+A third-party outage does not erase data returned by other providers. If only one public-IP or GeoIP source works, its result remains visible with reduced source coverage. GeoIP databases can legitimately disagree about a mobile carrier gateway's city or region; that disagreement is metadata only and is never treated as VPN-leak evidence by itself.
 
 ## Guided VPN Leak Test
 
@@ -178,7 +184,7 @@ The project itself uses no analytics and stores no persistent result history. Co
 The current GitHub Pages configuration may contact multiple third-party services, including:
 
 - ipify, IPPubblico, ipwho.is, and icanhazip for public-address discovery/fallbacks;
-- ipapi.co, ipwho.is, and FreeIPAPI for GeoIP metadata;
+- ipapi.co, ipwho.is, FreeIPAPI, and ipapi.is for GeoIP metadata;
 - ipapi.is for optional network-intelligence metadata;
 - Cloudflare and Google DNS-over-HTTPS for optional PTR lookups;
 - Cloudflare, Google, and Twilio STUN endpoints for WebRTC observations/stress;
@@ -186,7 +192,7 @@ The current GitHub Pages configuration may contact multiple third-party services
 - httpbin for optional HTTP path/echo inspection;
 - FlagCDN for country flag images.
 
-These third-party services necessarily observe requests sent to them and may apply their own logging/privacy policies. The project does not control those external logs.
+Core GeoIP providers are contacted in parallel once an address is detected because the page prioritizes low visible latency. The first usable location may be shown before the other GeoIP requests finish; final consensus replaces the provisional display. These third-party services necessarily observe the queried public IP and requests sent to them and may apply their own logging/privacy policies. The project does not control those external logs.
 
 Opening Advanced sends one best-effort request to the configured TLS reflector. Canvas/audio hashes are not included in that request.
 

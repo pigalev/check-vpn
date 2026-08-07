@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Minimal browser-based VPN address leak check.">
+  <meta name="description" content="Browser-based VPN leak and privacy diagnostics.">
   <title>VPN Leak Check</title>
   <link rel="stylesheet" href="./assets/styles.css">
 </head>
@@ -13,16 +13,43 @@
       <div>
         <p class="eyebrow">Network diagnostics</p>
         <h1>VPN Leak Check</h1>
-        <p class="intro">Compare public IP, location, and WebRTC addresses exposed by this connection.</p>
+        <p class="intro">Compare public IP, WebRTC, network ownership, and browser privacy signals.</p>
       </div>
       <button id="run-tests" class="primary-button" type="button">Run again</button>
     </header>
     <main>
       <section class="summary" aria-live="polite">
         <span id="overall-status" class="status-pill" data-status="idle">Starting</span>
-        <p id="overall-message">The available checks start automatically.</p>
+        <div class="summary-copy">
+          <p id="overall-message">The available checks start automatically.</p>
+          <div id="top-findings" class="top-findings"></div>
+        </div>
       </section>
+
       <section id="results-grid" class="results-grid" aria-label="Test results"></section>
+
+      <details id="advanced-details" class="advanced-shell">
+        <summary>Advanced details</summary>
+        <div class="advanced-toolbar">
+          <p>Best-effort third-party diagnostics. Opening this section starts the advanced checks once.</p>
+          <button id="run-advanced" class="secondary-button" type="button">Run advanced again</button>
+        </div>
+        <div id="advanced-results" class="advanced-grid"></div>
+      </details>
+
+      <section id="monitor-section" class="monitor-shell" aria-labelledby="monitor-heading">
+        <div class="monitor-header">
+          <div>
+            <p class="eyebrow">Interactive test</p>
+            <h2 id="monitor-heading">Kill Switch test</h2>
+            <p class="card-detail">Monitor public addresses while you disconnect or reconnect the VPN.</p>
+          </div>
+          <button id="monitor-toggle" class="secondary-button" type="button">Start monitoring</button>
+        </div>
+        <div id="monitor-status" class="monitor-status">Not running</div>
+        <div id="monitor-timeline" class="monitor-timeline"></div>
+      </section>
+
       <div class="report-actions">
         <button id="copy-json" class="secondary-button" type="button" disabled>Copy JSON</button>
       </div>

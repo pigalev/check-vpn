@@ -4,8 +4,8 @@ function dedupe(findings) {
   return [...map.values()];
 }
 
-export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [], monitorFindings = [], aggressiveFindings = [] }) {
-  const findings = [ ...(privacy?.findings ?? []), ...networkFindings, ...monitorFindings, ...aggressiveFindings ];
+export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [], monitorFindings = [], aggressiveFindings = [], guidedFindings = [] }) {
+  const findings = [ ...(privacy?.findings ?? []), ...networkFindings, ...monitorFindings, ...aggressiveFindings, ...guidedFindings ];
   const httpAddresses = new Set([ipv4?.address, ipv6?.address].filter(Boolean));
   const rtcMismatch = (webrtc?.publicAddresses ?? []).filter((address) => httpAddresses.size && !httpAddresses.has(address));
   if (rtcMismatch.length) findings.push({ id: 'webrtc-public-mismatch', severity: 'leak', category: 'network', summary: 'WebRTC exposed a different public address', details: rtcMismatch.join(', '), sources: ['webrtc', 'http'] });

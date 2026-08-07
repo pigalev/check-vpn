@@ -9,7 +9,9 @@ export const appConfig = Object.freeze({
   aggressiveGapMultiplier: 2.5,
   aggressiveBurstCooldownMs: 1500,
   aggressiveMinHttpAttempts: 10,
-  aggressiveMinSuccessfulHttpSamples: 6
+  aggressiveMinSuccessfulHttpSamples: 6,
+  reconnectBurstOffsetsMs: Object.freeze([0, 250, 500, 1000, 2000, 4000]),
+  reconnectWebRtcOffsetsMs: Object.freeze([0, 500, 2000, 4000])
 });
 
 export const features = Object.freeze({

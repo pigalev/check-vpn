@@ -68,7 +68,8 @@ for (const forbidden of ['Backend required', 'Coming soon', 'DNS leak test', 'To
 
 const guidedProfileSource = await readFile(resolve(root, 'assets/guided-leak-profile.js'), 'utf8');
 if (/\blocalStorage\b/.test(guidedProfileSource)) throw new Error('Guided leak profile must not use localStorage');
-if (!/\bsessionStorage\b/.test(guidedProfileSource)) throw new Error('Guided leak profile must use current-tab sessionStorage by default');
+const appSource = await readFile(resolve(root, 'assets/app.js'), 'utf8');
+if (!/storage:\s*window\.sessionStorage/.test(appSource)) throw new Error('Guided leak profile must be wired to current-tab sessionStorage');
 
 const importPattern = /from\s+['"](\.\/.+?)['"]/g;
 for (const file of required.filter((name) => name.endsWith('.js'))) {

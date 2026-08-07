@@ -6,6 +6,7 @@
   <meta name="description" content="Browser-based VPN leak and privacy diagnostics.">
   <title>VPN Leak Check</title>
   <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="stylesheet" href="./assets/guided-leak.css">
 </head>
 <body>
   <div class="page-shell">
@@ -48,6 +49,41 @@
         </div>
         <div id="monitor-status" class="monitor-status">Not running</div>
         <div id="monitor-timeline" class="monitor-timeline"></div>
+      </section>
+
+      <section id="guided-section" class="monitor-shell guided-shell" aria-labelledby="guided-heading">
+        <div class="guided-header">
+          <div>
+            <p class="eyebrow">Known real IP test</p>
+            <h2 id="guided-heading">Guided VPN Leak Test</h2>
+            <p id="guided-step" class="guided-step">Step 1 of 3</p>
+            <p id="guided-instructions" class="card-detail">Turn VPN off, then capture your real connection.</p>
+            <p class="guided-privacy">Your pre-VPN public IP is intentionally checked against third-party diagnostic services. Saved for this tab only.</p>
+          </div>
+        </div>
+        <div class="guided-connection-grid">
+          <div id="guided-real" class="guided-connection-card"><strong>Real connection</strong><p class="card-detail">Not captured</p></div>
+          <div id="guided-vpn" class="guided-connection-card"><strong>VPN connection</strong><p class="card-detail">Not captured</p></div>
+        </div>
+        <div class="guided-controls">
+          <button id="guided-primary" class="primary-button" type="button">Capture real IP</button>
+          <button id="guided-secondary" class="secondary-button" type="button" hidden>Continue anyway</button>
+          <button id="guided-clear" class="secondary-button" type="button">Clear captured IPs</button>
+        </div>
+        <div id="guided-result" class="guided-result" aria-live="polite"></div>
+        <div id="guided-exposures" class="guided-exposures"></div>
+        <div id="guided-paths" class="guided-paths"></div>
+        <div id="guided-coverage" class="guided-coverage"></div>
+
+        <div class="guided-media">
+          <h3>Optional media-permission WebRTC test</h3>
+          <p class="card-detail guided-media-copy">Your browser may ask for camera/microphone permission. Media is not recorded and is not uploaded by this project. Tracks are stopped immediately after the WebRTC diagnostic.</p>
+          <div class="guided-controls">
+            <button id="media-webrtc-button" class="secondary-button" type="button">Run media-permission test</button>
+          </div>
+          <div id="media-webrtc-status" class="monitor-status">Not run</div>
+          <div id="media-webrtc-result"></div>
+        </div>
       </section>
 
       <section id="aggressive-section" class="monitor-shell aggressive-shell" aria-labelledby="aggressive-heading">

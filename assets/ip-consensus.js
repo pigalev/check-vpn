@@ -35,8 +35,7 @@ export async function runIpProvider({ provider, family, timeoutMs, fetchImpl = f
   }
 }
 
-export async function runIpConsensus({ family, providers, timeoutMs, fetchImpl = fetch }) {
-  const sources = await Promise.all(providers.map((provider) => runIpProvider({ provider, family, timeoutMs, fetchImpl })));
+function buildConsensusResult(family, providers, sources) {
   const successful = sources.filter((source) => source.status === 'complete');
   const counts = {};
   for (const source of successful) counts[source.address] = (counts[source.address] ?? 0) + 1;
@@ -53,4 +52,21 @@ export async function runIpConsensus({ family, providers, timeoutMs, fetchImpl =
     sources,
     error: successful.length ? null : `IPv${family} unavailable`
   };
+}
+
+export async function runIpConsensusProgressive({ family, providers, timeoutMs, fetchImpl = fetch, onFirstValid = null }) {
+  let emitted = false;
+  const promises = providers.map(async (provider) => {
+    const source = await runIpProvider({ provider, family, timeoutMs, fetchImpl });
+    if (!emitted && source.status === 'complete') {
+      emitted = true;
+      onFirstValid?.(source);
+    }
+    return source;
+  });
+  return buildConsensusResult(family, providers, await Promise.all(promises));
+}
+
+export function runIpConsensus(args) {
+  return runIpConsensusProgressive(args);
 }

@@ -8,6 +8,7 @@ const required = [
   'assets/styles.css',
   'assets/config.js',
   'assets/network.js',
+  'assets/ip-classification.js',
   'assets/ip-tests.js',
   'assets/ip-consensus.js',
   'assets/geoip.js',
@@ -25,6 +26,10 @@ const required = [
   'assets/stun-mapping.js',
   'assets/monitor-enrichment.js',
   'assets/monitor.js',
+  'assets/leak-observation.js',
+  'assets/aggressive-leak-test.js',
+  'assets/aggressive-leak-enrichment.js',
+  'assets/aggressive-leak-render.js',
   'assets/assessment.js',
   'assets/app.js'
 ];
@@ -33,7 +38,7 @@ for (const file of required) await access(resolve(root, file));
 
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
 if (!html.includes('./assets/styles.css') || !html.includes('./assets/app.js')) throw new Error('index.html must reference styles.css and app.js');
-if (!html.includes('advanced-details') || !html.includes('monitor-toggle')) throw new Error('Max diagnostics controls are missing');
+if (!html.includes('advanced-details') || !html.includes('monitor-toggle') || !html.includes('aggressive-toggle')) throw new Error('Max diagnostics controls are missing');
 for (const forbidden of ['Backend required', 'Coming soon', 'DNS leak test', 'Torrent leak test', 'Email leak test']) {
   if (html.includes(forbidden)) throw new Error(`Forbidden placeholder found: ${forbidden}`);
 }

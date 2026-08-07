@@ -1,6 +1,7 @@
 import { appConfig, features, getEnabledChecks, networkConfig } from './config.js';
 import { runIpTest } from './ip-tests.js';
 import { runGeoIpLookup } from './geoip.js';
+import { countryCodeToFlag } from './country.js';
 import { describeCandidate, runWebRtcTest } from './webrtc-test.js';
 import { collectBrowserInfo } from './browser-info.js';
 import { assessResults } from './assessment.js';
@@ -111,7 +112,9 @@ function renderRunning(name) {
 function formatGeoLocation(geo) {
   if (!geo || geo.status !== 'complete') return null;
   const place = [geo.city, geo.region].filter(Boolean).join(', ');
-  return [geo.country, place].filter(Boolean).join(' · ');
+  const location = [geo.country, place].filter(Boolean).join(' · ');
+  const flag = countryCodeToFlag(geo.countryCode);
+  return [flag, location].filter(Boolean).join(' ');
 }
 
 function renderIp(name, result) {
@@ -171,6 +174,11 @@ function renderWebRtc(result, ipv4, ipv6, assessment) {
 
   if (result.error) addText(body, result.error);
 
+  const layout = document.createElement('div');
+  layout.className = 'webrtc-layout';
+
+  const candidatesColumn = document.createElement('div');
+  candidatesColumn.className = 'webrtc-candidates';
   const list = document.createElement('div');
   list.className = 'candidate-list';
   if (result.candidates.length) {
@@ -178,9 +186,11 @@ function renderWebRtc(result, ipv4, ipv6, assessment) {
   } else {
     addText(list, 'No ICE candidates were exposed by this browser.');
   }
-  body.append(list);
+  candidatesColumn.append(list);
 
   const publicValue = result.publicAddresses.length ? result.publicAddresses.join(', ') : 'Not detected';
+  const comparisonColumn = document.createElement('div');
+  comparisonColumn.className = 'webrtc-comparison';
   const comparison = document.createElement('div');
   comparison.className = 'comparison-block';
   const comparisonTitle = document.createElement('p');
@@ -193,7 +203,10 @@ function renderWebRtc(result, ipv4, ipv6, assessment) {
     ['WebRTC public', publicValue]
   ]);
   addText(comparison, assessment.message, 'comparison-result');
-  body.append(comparison);
+  comparisonColumn.append(comparison);
+
+  layout.append(candidatesColumn, comparisonColumn);
+  body.append(layout);
 }
 
 function renderBrowser(info) {

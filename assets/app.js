@@ -2,7 +2,7 @@ import { appConfig, features, networkConfig } from './config.js';
 import { runIpConsensus } from './ip-consensus.js';
 import { runGeoIpConsensus } from './geoip.js';
 import { countryCodeToFlagUrl } from './country.js';
-import { describeCandidate, runWebRtcTest } from './webrtc-test.js';
+import { describeCandidate, runWebRtcTest, summarizeWebRtcPrivacy } from './webrtc-test.js';
 import { collectBrowserInfo } from './browser-info.js';
 import { assessPrivacy } from './privacy-assessment.js';
 import { assessAddressFamilies } from './network-assessment.js';
@@ -16,6 +16,9 @@ import { assessEnvironmentConsistency } from './environment-consistency.js';
 import { compareStunMappings } from './stun-mapping.js';
 import { createIpMonitor, monitorFindings } from './monitor.js';
 import { createMonitorEnricher } from './monitor-enrichment.js';
+import { createAggressiveLeakTest } from './aggressive-leak-test.js';
+import { renderAggressiveLeakTest } from './aggressive-leak-render.js';
+import { createAggressiveLeakEnricher } from './aggressive-leak-enrichment.js';
 
 const grid = document.querySelector('#results-grid');
 const runButton = document.querySelector('#run-tests');
@@ -29,6 +32,14 @@ const advancedButton = document.querySelector('#run-advanced');
 const monitorToggle = document.querySelector('#monitor-toggle');
 const monitorStatus = document.querySelector('#monitor-status');
 const monitorTimeline = document.querySelector('#monitor-timeline');
+const aggressiveElements = {
+  toggle: document.querySelector('#aggressive-toggle'),
+  status: document.querySelector('#aggressive-status'),
+  progress: document.querySelector('#aggressive-progress'),
+  summary: document.querySelector('#aggressive-summary'),
+  timeline: document.querySelector('#aggressive-timeline'),
+  exposures: document.querySelector('#aggressive-exposures')
+};
 
 const cards = new Map();
 let currentReport = null;
@@ -36,8 +47,15 @@ let currentRunId = 0;
 let advancedRunId = null;
 let running = false;
 let monitor = null;
+let aggressive = null;
 const enrichingEvents = new Set();
+const enrichingAggressive = new Set();
+
 const monitorEnricher = createMonitorEnricher({
+  geoLookup: (ip) => runGeoIpConsensus({ ip, providers: networkConfig.geoIpProviders, timeoutMs: networkConfig.geoIpTimeoutMs }),
+  intelligenceLookup: (ip) => runNetworkIntelligence({ ip, endpointTemplate: networkConfig.intelligenceUrlTemplate, timeoutMs: networkConfig.advancedTimeoutMs })
+});
+const aggressiveEnricher = createAggressiveLeakEnricher({
   geoLookup: (ip) => runGeoIpConsensus({ ip, providers: networkConfig.geoIpProviders, timeoutMs: networkConfig.geoIpTimeoutMs }),
   intelligenceLookup: (ip) => runNetworkIntelligence({ ip, endpointTemplate: networkConfig.intelligenceUrlTemplate, timeoutMs: networkConfig.advancedTimeoutMs })
 });
@@ -97,7 +115,20 @@ function renderWebRtc(result, ipv4, ipv6) {
   const body = bodyFor('webrtc', result.status === 'complete' ? 'Complete' : 'Unavailable');
   if (result.error) text(body, result.error);
   const summary = result.summary ?? {};
-  rows(body, [['Public', result.publicAddresses?.join(', ') || 'Not detected'], ['Candidates', `${result.candidates?.length ?? 0} total`], ['Types', `host ${summary.host ?? 0} · srflx ${summary.srflx ?? 0} · relay ${summary.relay ?? 0}`], ['Families', `IPv4 ${summary.ipv4 ?? 0} · IPv6 ${summary.ipv6 ?? 0}`], ['Transport', `UDP ${summary.udp ?? 0} · TCP ${summary.tcp ?? 0}`]]);
+  const trusted = new Set([ipv4?.address, ipv6?.address].filter(Boolean));
+  const privacy = summarizeWebRtcPrivacy(result.candidates ?? [], trusted);
+  rows(body, [
+    ['Public', result.publicAddresses?.join(', ') || 'Not detected'],
+    ['Candidates', `${result.candidates?.length ?? 0} total`],
+    ['Types', `host ${summary.host ?? 0} · srflx ${summary.srflx ?? 0} · relay ${summary.relay ?? 0}`],
+    ['Families', `IPv4 ${summary.ipv4 ?? 0} · IPv6 ${summary.ipv6 ?? 0}`],
+    ['Transport', `UDP ${summary.udp ?? 0} · TCP ${summary.tcp ?? 0}`],
+    ['Numeric private IPv4', privacy.numericPrivateIpv4Exposed ? 'Exposed' : 'Not detected'],
+    ['CGNAT candidate', privacy.cgnatExposed ? 'Exposed' : 'Not detected'],
+    ['Private/ULA IPv6', privacy.privateIpv6Exposed ? 'Exposed' : 'Not detected'],
+    ['mDNS protection', privacy.mdnsProtection ? 'Active' : 'Not observed'],
+    ['Public mismatch', privacy.publicMismatches.length ? privacy.publicMismatches.join(', ') : 'No']
+  ]);
   const list = document.createElement('div'); list.className = 'candidate-list';
   for (const candidate of result.candidates ?? []) {
     const d = describeCandidate(candidate); const item = document.createElement('div'); item.className = 'candidate-item';
@@ -106,8 +137,7 @@ function renderWebRtc(result, ipv4, ipv6) {
     text(item, d.meta, 'candidate-meta'); if (candidate.port != null) text(item, `Port ${candidate.port}`, 'candidate-meta'); if (d.note) text(item, d.note, 'candidate-note'); list.append(item);
   }
   body.append(list);
-  const expected = new Set([ipv4?.address, ipv6?.address].filter(Boolean)); const mismatch = (result.publicAddresses ?? []).filter((address) => !expected.has(address));
-  text(body, mismatch.length ? `Mismatch: ${mismatch.join(', ')}` : 'WebRTC public addresses match HTTP results.', mismatch.length ? 'inline-danger' : 'comparison-result');
+  text(body, privacy.publicMismatches.length ? `Mismatch: ${privacy.publicMismatches.join(', ')}` : 'WebRTC public addresses match HTTP results.', privacy.publicMismatches.length ? 'inline-danger' : 'comparison-result');
 }
 
 function renderPrivacy(browser, privacy) {
@@ -120,6 +150,33 @@ async function enrich(result) {
   if (!result?.address || !features.geoip) return { ...result, geo: null };
   return { ...result, geo: await runGeoIpConsensus({ ip: result.address, providers: networkConfig.geoIpProviders, timeoutMs: networkConfig.geoIpTimeoutMs }) };
 }
+
+function currentAggressiveFindings() {
+  const state = aggressive?.getState?.() ?? currentReport?.aggressive;
+  if (!state) return [];
+  if (state.exposures?.length) return state.exposures.map((exposure) => ({
+    id: `aggressive-public-ip-${exposure.family}-${exposure.address}`,
+    severity: 'leak', category: 'aggressive', summary: `Unexpected public IPv${exposure.family} observed`,
+    details: `${exposure.address} · ${(exposure.sources ?? []).join(', ') || 'aggressive test'}`,
+    sources: ['aggressive-test', ...(exposure.channels ?? [])]
+  }));
+  if (state.result === 'inconclusive') return [{ id: 'aggressive-inconclusive', severity: 'review', category: 'aggressive', summary: 'Aggressive leak test was inconclusive', details: (state.reasons ?? []).join(' '), sources: ['aggressive-test'] }];
+  return [];
+}
+
+function reassess() {
+  if (!currentReport) return;
+  const base = assessAddressFamilies({ ipv4: currentReport.ipv4, ipv6: currentReport.ipv6, webrtc: currentReport.webrtc });
+  const extra = currentReport.advanced?.environmentConsistency?.findings ?? [];
+  currentReport.assessment = assessResults({
+    ipv4: currentReport.ipv4, ipv6: currentReport.ipv6, webrtc: currentReport.webrtc, privacy: currentReport.privacy,
+    networkFindings: [...base, ...extra],
+    monitorFindings: monitor ? monitorFindings(monitor.getState()) : [],
+    aggressiveFindings: currentAggressiveFindings()
+  });
+  renderOverall(currentReport.assessment);
+}
+
 function renderOverall(assessment) {
   const labels = { protected: 'Protected', review: 'Review', leak: 'Leak detected', incomplete: 'Incomplete' };
   overallStatus.textContent = labels[assessment.status] ?? assessment.status; overallStatus.dataset.status = assessment.status; overallMessage.textContent = assessment.message; topFindings.replaceChildren();
@@ -127,13 +184,17 @@ function renderOverall(assessment) {
 }
 
 async function runCore() {
-  if (running) return;
+  if (running || aggressive?.getState?.().status === 'running') return;
   running = true; runButton.disabled = true; copyButton.disabled = true; currentRunId += 1; advancedRunId = null; advancedResults.replaceChildren();
   overallStatus.textContent = 'Running'; overallStatus.dataset.status = 'running'; overallMessage.textContent = 'Running core diagnostics.'; for (const name of cards.keys()) bodyFor(name, 'Running');
-  const [r4, r6, webrtc] = await Promise.all([runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }), runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs }), runWebRtcTest({ stunUrls: networkConfig.stunUrls, timeoutMs: networkConfig.webrtcTimeoutMs })]);
+  const [r4, r6, webrtc] = await Promise.all([
+    runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }),
+    runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs }),
+    runWebRtcTest({ stunUrls: networkConfig.stunUrls, timeoutMs: networkConfig.webrtcTimeoutMs })
+  ]);
   const [ipv4, ipv6] = await Promise.all([enrich(r4), enrich(r6)]); const browser = collectBrowserInfo(window); const privacy = assessPrivacy({ browser, ipv4, ipv6 });
-  const networkFindings = assessAddressFamilies({ ipv4, ipv6, webrtc }); const assessment = assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings, monitorFindings: [] });
-  currentReport = { startedAt: new Date().toISOString(), runId: currentRunId, ipv4, ipv6, webrtc, browser, privacy, assessment, advanced: null, monitor: monitor?.getState?.() ?? null };
+  const networkFindings = assessAddressFamilies({ ipv4, ipv6, webrtc }); const assessment = assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings, monitorFindings: [], aggressiveFindings: [] });
+  currentReport = { startedAt: new Date().toISOString(), runId: currentRunId, ipv4, ipv6, webrtc, browser, privacy, assessment, advanced: null, monitor: monitor?.getState?.() ?? null, aggressive: aggressive?.getState?.() ?? null };
   renderIp('ipv4', ipv4); renderIp('ipv6', ipv6); renderWebRtc(webrtc, ipv4, ipv6); renderPrivacy(browser, privacy); renderOverall(assessment); running = false; runButton.disabled = false; copyButton.disabled = false;
 }
 
@@ -155,7 +216,6 @@ function renderStunResults(parent, stun) {
   parent.append(list);
 }
 function statusText(value) { return value === 'complete' ? 'Available' : value === 'blocked' ? 'Blocked or modified' : value === 'unsupported' ? 'Unsupported' : value === 'partial' ? 'Partial' : 'Unavailable'; }
-
 async function safe(task, fallback) { try { return await task(); } catch { return fallback; } }
 
 async function runAdvanced(force = false) {
@@ -176,8 +236,7 @@ async function runAdvanced(force = false) {
 
   ips.forEach((ip, index) => { const card = advancedCard(`${ip.includes(':') ? 'IPv6' : 'IPv4'} network intelligence`); text(card, ip, 'card-value'); rows(card, intelligenceRows(intelligence[index])); const ptr = reverseDns[index]; rows(card, [['Reverse DNS', ptr?.names?.join(', ') || (ptr?.status === 'complete' ? 'No PTR record' : 'Unavailable')], ['PTR resolvers', `${ptr?.agreement?.available ?? 0}/${ptr?.agreement?.total ?? 0}${ptr?.agreement?.agree ? ' · agree' : ' · differ'}`]]); });
 
-  const tlsCard = advancedCard('TLS fingerprint');
-  text(tlsCard, 'Third-party TLS reflector. This request is observed by the configured external service.', 'card-detail');
+  const tlsCard = advancedCard('TLS fingerprint'); text(tlsCard, 'Third-party TLS reflector. This request is observed by the configured external service.', 'card-detail');
   rows(tlsCard, [['Status', tlsFingerprint.status], ['Observed IP', tlsFingerprint.observedIp || 'Unavailable'], ['HTTP', tlsFingerprint.httpVersion || 'Unavailable'], ['TLS', tlsFingerprint.tlsVersion || 'Unavailable'], ['ALPN', tlsFingerprint.alpn?.join(', ') || 'Unavailable'], ['JA3 hash', tlsFingerprint.ja3Hash || 'Unavailable'], ['JA4', tlsFingerprint.ja4 || 'Unavailable'], ['Ciphers', tlsFingerprint.cipherSummary], ['Extensions', tlsFingerprint.extensionSummary], ['HTTP/2 fingerprint', tlsFingerprint.http2Fingerprint]]);
 
   const fingerprintCard = advancedCard('Fingerprint exposure');
@@ -200,10 +259,8 @@ async function runAdvanced(force = false) {
   const browserCard = advancedCard('Browser privacy surface'); const b = currentReport.browser;
   rows(browserCard, [['User-Agent', b.userAgent], ['Languages', b.languages?.join(', ')], ['Screen', b.screen?.width && b.screen?.height ? `${b.screen.width}×${b.screen.height}` : 'Unavailable'], ['Viewport', b.viewport?.width && b.viewport?.height ? `${b.viewport.width}×${b.viewport.height}` : 'Unavailable'], ['Pixel ratio', b.devicePixelRatio], ['CPU threads', b.hardwareConcurrency], ['Device memory', b.deviceMemoryGb != null ? `${b.deviceMemoryGb} GB` : 'Unavailable'], ['Touch points', b.maxTouchPoints], ['Cookies', b.cookieEnabled == null ? 'Unknown' : b.cookieEnabled ? 'Enabled' : 'Disabled'], ['Connection', b.connection?.effectiveType], ['Downlink', b.connection?.downlinkMbps != null ? `${b.connection.downlinkMbps} Mbps` : null], ['RTT', b.connection?.rttMs != null ? `${b.connection.rttMs} ms` : null]]);
 
-  const addressFindings = assessAddressFamilies({ ipv4: currentReport.ipv4, ipv6: currentReport.ipv6, webrtc: currentReport.webrtc });
   currentReport.advanced = { intelligence, reverseDns, stun, stunMapping, httpInspection, tlsFingerprint, fingerprintExposure, environmentConsistency, completedAt: new Date().toISOString() };
-  currentReport.assessment = assessResults({ ipv4: currentReport.ipv4, ipv6: currentReport.ipv6, webrtc: currentReport.webrtc, privacy: currentReport.privacy, networkFindings: [...addressFindings, ...environmentConsistency.findings, ...(fingerprintExposure.findings ?? []), stunMapping.finding], monitorFindings: monitor ? monitorFindings(monitor.getState()) : [] });
-  renderOverall(currentReport.assessment); advancedButton.disabled = false;
+  reassess(); advancedButton.disabled = false;
 }
 
 async function enrichPendingMonitorEvents(state) {
@@ -228,12 +285,68 @@ function renderMonitor(state) {
   if (currentReport) currentReport.monitor = state; queueMicrotask(() => enrichPendingMonitorEvents(state));
 }
 function createMonitor() {
-  return createIpMonitor({ intervalMs: appConfig.monitorIntervalMs, sample: async () => { const [ipv4, ipv6] = await Promise.all([runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }), runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })]); return { ipv4, ipv6 }; }, onUpdate: (state) => {
-    renderMonitor(state); const findings = monitorFindings(state);
-    if (currentReport) { const base = assessAddressFamilies({ ipv4: currentReport.ipv4, ipv6: currentReport.ipv6, webrtc: currentReport.webrtc }); const extra = currentReport.advanced?.environmentConsistency?.findings ?? []; currentReport.assessment = assessResults({ ipv4: currentReport.ipv4, ipv6: currentReport.ipv6, webrtc: currentReport.webrtc, privacy: currentReport.privacy, networkFindings: [...base, ...extra], monitorFindings: findings }); renderOverall(currentReport.assessment); }
-  } });
+  return createIpMonitor({ intervalMs: appConfig.monitorIntervalMs, sample: async () => { const [ipv4, ipv6] = await Promise.all([runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }), runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })]); return { ipv4, ipv6 }; }, onUpdate: (state) => { renderMonitor(state); reassess(); } });
 }
 
-async function copyReport() { if (!currentReport) return; const value = JSON.stringify(currentReport, null, 2); try { await navigator.clipboard.writeText(value); } catch { const area = document.createElement('textarea'); area.value = value; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); } copyButton.textContent = 'Copied'; setTimeout(() => { copyButton.textContent = 'Copy JSON'; }, 1000); }
-runButton.addEventListener('click', runCore); copyButton.addEventListener('click', copyReport); advancedDetails.addEventListener('toggle', () => { if (advancedDetails.open) runAdvanced(false); }); advancedButton.addEventListener('click', () => runAdvanced(true)); monitorToggle.addEventListener('click', async () => { if (!monitor) monitor = createMonitor(); if (monitor.getState().running) monitor.stop(); else await monitor.start(); });
+function baselineMetadata() {
+  const intelligence = currentReport?.advanced?.intelligence?.[0] ?? null;
+  return { geo: currentReport?.ipv4?.geo ?? currentReport?.ipv6?.geo ?? null, intelligence };
+}
+async function enrichAggressiveExposures(state) {
+  if (!aggressive) return;
+  for (const exposure of (state.exposures ?? []).filter((item) => item.address && !item.enrichmentStatus && !enrichingAggressive.has(item.key))) {
+    const expectedRunId = state.runId;
+    enrichingAggressive.add(item.key);
+    try {
+      const enriched = await aggressiveEnricher.enrichExposure(exposure, baselineMetadata());
+      aggressive.replaceExposure(enriched, expectedRunId);
+    } finally { enrichingAggressive.delete(item.key); }
+  }
+}
+function handleAggressiveUpdate(state) {
+  renderAggressiveLeakTest(aggressiveElements, state);
+  runButton.disabled = state.status === 'running';
+  if (currentReport) currentReport.aggressive = state;
+  queueMicrotask(() => enrichAggressiveExposures(state));
+  reassess();
+}
+function createAggressiveController() {
+  const initialBaseline = {
+    4: [currentReport?.ipv4?.address].filter(Boolean),
+    6: [currentReport?.ipv6?.address].filter(Boolean)
+  };
+  return createAggressiveLeakTest({
+    config: appConfig,
+    initialBaseline,
+    environment: window,
+    sampleHttp: async () => Promise.all([
+      runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }),
+      runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })
+    ]),
+    sampleStun: () => Promise.all(networkConfig.stunUrls.map(async (server) => ({ server, result: await runWebRtcTest({ stunUrls: [server], timeoutMs: networkConfig.webrtcTimeoutMs }) }))),
+    sampleEcho: () => runHttpInspection({ endpoint: networkConfig.httpEchoEndpoint, timeoutMs: networkConfig.advancedTimeoutMs }),
+    sampleTls: () => runTlsFingerprint({ endpoint: networkConfig.tlsReflectorEndpoint, timeoutMs: networkConfig.fingerprintTimeoutMs }),
+    onUpdate: handleAggressiveUpdate
+  });
+}
+
+async function copyReport() {
+  if (!currentReport) return;
+  const value = JSON.stringify(currentReport, null, 2);
+  try { await navigator.clipboard.writeText(value); }
+  catch { const area = document.createElement('textarea'); area.value = value; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); }
+  copyButton.textContent = 'Copied'; setTimeout(() => { copyButton.textContent = 'Copy JSON'; }, 1000);
+}
+
+runButton.addEventListener('click', runCore);
+copyButton.addEventListener('click', copyReport);
+advancedDetails.addEventListener('toggle', () => { if (advancedDetails.open) runAdvanced(false); });
+advancedButton.addEventListener('click', () => runAdvanced(true));
+monitorToggle.addEventListener('click', async () => { if (!monitor) monitor = createMonitor(); if (monitor.getState().running) monitor.stop(); else await monitor.start(); });
+aggressiveElements.toggle?.addEventListener('click', async () => {
+  if (!currentReport) await runCore();
+  if (!aggressive || aggressive.getState().status !== 'running') { aggressive = createAggressiveController(); await aggressive.start(); }
+  else aggressive.stop();
+});
+
 if (appConfig.autoRun) queueMicrotask(runCore);

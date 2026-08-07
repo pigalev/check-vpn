@@ -198,6 +198,24 @@ function intelligenceRows(result) {
   ];
 }
 
+function renderStunResults(parent, stun) {
+  const list = document.createElement('div');
+  list.className = 'stun-result-list';
+  for (const item of stun) {
+    const row = document.createElement('div');
+    row.className = 'stun-result-row';
+    const server = document.createElement('span');
+    server.className = 'stun-server';
+    server.textContent = item.server.replace(/^stun:/, '');
+    const address = document.createElement('span');
+    address.className = 'stun-address';
+    address.textContent = item.result.publicAddresses?.join(', ') || 'No public candidate';
+    row.append(server, address);
+    list.append(row);
+  }
+  parent.append(list);
+}
+
 async function runAdvanced(force = false) {
   if (!currentReport) return;
   if (!force && advancedRunId === currentRunId) return;
@@ -218,7 +236,7 @@ async function runAdvanced(force = false) {
   });
 
   const stunCard = advancedCard('STUN comparison');
-  for (const item of stun) rows(stunCard, [[item.server.replace(/^stun:/, ''), item.result.publicAddresses?.join(', ') || 'No public candidate']]);
+  renderStunResults(stunCard, stun);
 
   const httpCard = advancedCard('HTTP path');
   rows(httpCard, [['Observed IP', httpInspection.observedIp || 'Unavailable'], ['Via', httpInspection.proxyHeaders?.via || 'Not returned'], ['Forwarded', httpInspection.proxyHeaders?.forwarded || 'Not returned'], ['X-Forwarded-For', httpInspection.proxyHeaders?.['x-forwarded-for'] || 'Not returned'], ['User-Agent', httpInspection.headers?.['user-agent'] || 'Unavailable'], ['Accept-Language', httpInspection.headers?.['accept-language'] || 'Unavailable']]);

@@ -15,7 +15,26 @@ export const features = Object.freeze({
 export const networkConfig = Object.freeze({
   ipv4Endpoint: 'https://api4.ipify.org?format=json',
   ipv6Endpoint: 'https://api6.ipify.org?format=json',
-  geoIpUrlTemplate: 'https://ipapi.co/{ip}/json/',
+  geoIpProviders: Object.freeze([
+    Object.freeze({
+      id: 'ipapi',
+      label: 'ipapi.co',
+      kind: 'ipapi',
+      urlTemplate: 'https://ipapi.co/{ip}/json/'
+    }),
+    Object.freeze({
+      id: 'ipwhois',
+      label: 'ipwho.is',
+      kind: 'ipwhois',
+      urlTemplate: 'https://ipwho.is/{ip}'
+    }),
+    Object.freeze({
+      id: 'freeipapi',
+      label: 'FreeIPAPI',
+      kind: 'freeipapi',
+      urlTemplate: 'https://freeipapi.com/api/json/{ip}'
+    })
+  ]),
   stunUrls: Object.freeze([
     'stun:stun.cloudflare.com:3478',
     'stun:stun.l.google.com:19302'

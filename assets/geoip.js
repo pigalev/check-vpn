@@ -138,6 +138,17 @@ function locationTuple(result) {
     .join('|');
 }
 
+function metadataTuple(result) {
+  return [
+    result.countryCode ?? result.country ?? '',
+    result.city ?? '',
+    result.region ?? '',
+    result.asn ?? '',
+    result.org ?? '',
+    result.timezone ?? ''
+  ].map((value) => String(value).trim().toLowerCase()).join('|');
+}
+
 export async function runGeoIpConsensus({ ip, providers, timeoutMs, fetchImpl = fetch }) {
   const sources = await Promise.all(
     providers.map((provider) => runGeoIpProviderLookup({ ip, provider, timeoutMs, fetchImpl }))
@@ -166,9 +177,11 @@ export async function runGeoIpConsensus({ ip, providers, timeoutMs, fetchImpl = 
 
   const countryCodes = successful.map((result) => result.countryCode).filter(Boolean);
   const locations = successful.map(locationTuple).filter(Boolean);
+  const metadata = successful.map(metadataTuple);
   const countryAgree = distinctNormalized(countryCodes).size <= 1;
   const locationAgree = distinctNormalized(locations).size <= 1;
-  const differences = countryAgree && locationAgree
+  const metadataAgree = distinctNormalized(metadata).size <= 1;
+  const differences = metadataAgree
     ? []
     : successful.map((result) => ({
         source: result.source,
@@ -177,7 +190,8 @@ export async function runGeoIpConsensus({ ip, providers, timeoutMs, fetchImpl = 
         region: result.region,
         city: result.city,
         asn: result.asn,
-        org: result.org
+        org: result.org,
+        timezone: result.timezone
       }));
 
   return {

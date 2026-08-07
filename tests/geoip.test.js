@@ -67,7 +67,7 @@ test('normalizes FreeIPAPI metadata', () => {
     cityName: 'Frankfurt am Main',
     asn: '64500',
     asnOrganization: 'Example Network',
-    timeZone: 'Europe/Berlin'
+    timeZones: ['Europe/Berlin', 'Europe/Busingen']
   }, '203.0.113.10', 'freeipapi', { id: 'freeipapi', label: 'FreeIPAPI' });
 
   assert.equal(result.status, 'complete');
@@ -75,6 +75,7 @@ test('normalizes FreeIPAPI metadata', () => {
   assert.equal(result.region, 'Hesse');
   assert.equal(result.asn, 'AS64500');
   assert.equal(result.org, 'Example Network');
+  assert.equal(result.timezone, 'Europe/Berlin');
 });
 
 test('provider failure preserves the expected IP', async () => {
@@ -129,7 +130,7 @@ test('consensus reports complete agreement', async () => {
       ? { country_code: 'DE', country_name: 'Germany', region: 'Hesse', city: 'Frankfurt am Main', asn: 'AS64500', org: 'Example Network', timezone: 'Europe/Berlin' }
       : url.includes('ipwho.example')
         ? { success: true, country_code: 'DE', country: 'Germany', region: 'Hesse', city: 'Frankfurt am Main', connection: { asn: 64500, org: 'Example Network' }, timezone: { id: 'Europe/Berlin' } }
-        : { countryCode: 'DE', countryName: 'Germany', regionName: 'Hesse', cityName: 'Frankfurt am Main', asn: '64500', asnOrganization: 'Example Network', timeZone: 'Europe/Berlin' }
+        : { countryCode: 'DE', countryName: 'Germany', regionName: 'Hesse', cityName: 'Frankfurt am Main', asn: '64500', asnOrganization: 'Example Network', timeZones: ['Europe/Berlin'] }
   });
 
   const result = await runGeoIpConsensus({ ip: '203.0.113.10', providers, timeoutMs: 100, fetchImpl });

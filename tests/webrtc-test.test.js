@@ -10,7 +10,7 @@ import {
 test('parses a server-reflexive public candidate', () => {
   assert.deepEqual(
     parseIceCandidate('candidate:1 1 udp 2122260223 203.0.113.10 54400 typ srflx raddr 192.168.1.5 rport 54400'),
-    { address: '203.0.113.10', family: 4, protocol: 'udp', type: 'srflx', classification: 'public' }
+    { address: '203.0.113.10', port: 54400, family: 4, protocol: 'udp', type: 'srflx', classification: 'public' }
   );
 });
 

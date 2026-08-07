@@ -6,6 +6,7 @@
   <meta name="description" content="Browser-based VPN leak and privacy diagnostics.">
   <title>VPN Leak Check</title>
   <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="stylesheet" href="./assets/dashboard.css">
   <link rel="stylesheet" href="./assets/guided-leak.css">
 </head>
 <body>
@@ -19,87 +20,131 @@
       <button id="run-tests" class="primary-button" type="button">Run again</button>
     </header>
     <main>
-      <section class="summary" aria-live="polite">
-        <span id="overall-status" class="status-pill" data-status="idle">Starting</span>
-        <div class="summary-copy">
-          <p id="overall-message">The available checks start automatically.</p>
+      <section id="dashboard" class="dashboard" aria-label="Connection and leak summary">
+        <article id="connection-panel" class="dashboard-panel connection-hero">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Your connection</p>
+              <h2>Public IP</h2>
+            </div>
+            <span id="overall-status" class="status-pill" data-status="idle">Starting</span>
+          </div>
+          <div id="connection-body" aria-live="polite">
+            <p class="connection-primary-empty">Checking public IP…</p>
+          </div>
+          <p id="overall-message" class="connection-message">The available checks start automatically.</p>
           <div id="top-findings" class="top-findings"></div>
+        </article>
+
+        <div class="dashboard-secondary">
+          <article id="leak-panel" class="dashboard-panel">
+            <div class="panel-heading">
+              <h2>Leak checks</h2>
+              <span id="leak-status" class="compact-status">Running</span>
+            </div>
+            <div id="leak-body"><p class="card-detail">Checking browser-visible leak paths…</p></div>
+          </article>
+
+          <article id="privacy-panel" class="dashboard-panel">
+            <div class="panel-heading">
+              <h2>Privacy</h2>
+              <span id="privacy-status" class="compact-status">Running</span>
+            </div>
+            <div id="privacy-body"><p class="card-detail">Checking browser and IP consistency…</p></div>
+          </article>
         </div>
       </section>
 
-      <section id="results-grid" class="results-grid" aria-label="Test results"></section>
-
       <details id="advanced-details" class="advanced-shell">
-        <summary>Advanced details</summary>
+        <summary>Advanced diagnostics</summary>
         <div class="advanced-toolbar">
-          <p>Best-effort third-party diagnostics. Opening this section starts the advanced checks once.</p>
+          <p>Best-effort third-party diagnostics. Open only when you need technical detail.</p>
           <button id="run-advanced" class="secondary-button" type="button">Run advanced again</button>
         </div>
         <div id="advanced-results" class="advanced-grid"></div>
       </details>
 
-      <section id="monitor-section" class="monitor-shell" aria-labelledby="monitor-heading">
-        <div class="monitor-header">
+      <section id="active-tests" class="active-tests" aria-labelledby="active-tests-heading">
+        <div class="section-heading">
           <div>
-            <p class="eyebrow">Interactive test</p>
-            <h2 id="monitor-heading">Kill Switch test</h2>
-            <p class="card-detail">Monitor public addresses while you disconnect or reconnect the VPN.</p>
+            <p class="eyebrow">Optional</p>
+            <h2 id="active-tests-heading">Active tests</h2>
           </div>
-          <button id="monitor-toggle" class="secondary-button" type="button">Start monitoring</button>
+          <p>Run stronger checks only when you need them.</p>
         </div>
-        <div id="monitor-status" class="monitor-status">Not running</div>
-        <div id="monitor-timeline" class="monitor-timeline"></div>
-      </section>
 
-      <section id="guided-section" class="monitor-shell guided-shell" aria-labelledby="guided-heading">
-        <div class="guided-header">
-          <div>
-            <p class="eyebrow">Known real IP test</p>
-            <h2 id="guided-heading">Guided VPN Leak Test</h2>
-            <p id="guided-step" class="guided-step">Step 1 of 3</p>
-            <p id="guided-instructions" class="card-detail">Turn VPN off, then capture your real connection.</p>
-            <p class="guided-privacy">Your pre-VPN public IP is intentionally checked against third-party diagnostic services. Saved for this tab only.</p>
-          </div>
-        </div>
-        <div class="guided-connection-grid">
-          <div id="guided-real" class="guided-connection-card"><strong>Real connection</strong><p class="card-detail">Not captured</p></div>
-          <div id="guided-vpn" class="guided-connection-card"><strong>VPN connection</strong><p class="card-detail">Not captured</p></div>
-        </div>
-        <div class="guided-controls">
-          <button id="guided-primary" class="primary-button" type="button">Capture real IP</button>
-          <button id="guided-secondary" class="secondary-button" type="button" hidden>Continue anyway</button>
-          <button id="guided-clear" class="secondary-button" type="button">Clear captured IPs</button>
-        </div>
-        <div id="guided-result" class="guided-result" aria-live="polite"></div>
-        <div id="guided-exposures" class="guided-exposures"></div>
-        <div id="guided-paths" class="guided-paths"></div>
-        <div id="guided-coverage" class="guided-coverage"></div>
+        <details id="guided-test-disclosure" class="active-test-row">
+          <summary><span>Guided VPN Leak Test</span><span class="active-test-meta">Recommended</span></summary>
+          <section id="guided-section" class="monitor-shell guided-shell active-test-content" aria-labelledby="guided-heading">
+            <div class="guided-header">
+              <div>
+                <p class="eyebrow">Known real IP test</p>
+                <h2 id="guided-heading">Guided VPN Leak Test</h2>
+                <p id="guided-step" class="guided-step">Step 1 of 3</p>
+                <p id="guided-instructions" class="card-detail">Turn VPN off, then capture your real connection.</p>
+                <p class="guided-privacy">Your pre-VPN public IP is intentionally checked against third-party diagnostic services. Saved for this tab only.</p>
+              </div>
+            </div>
+            <div class="guided-connection-grid">
+              <div id="guided-real" class="guided-connection-card"><strong>Real connection</strong><p class="card-detail">Not captured</p></div>
+              <div id="guided-vpn" class="guided-connection-card"><strong>VPN connection</strong><p class="card-detail">Not captured</p></div>
+            </div>
+            <div class="guided-controls">
+              <button id="guided-primary" class="primary-button" type="button">Capture real IP</button>
+              <button id="guided-secondary" class="secondary-button" type="button" hidden>Continue anyway</button>
+              <button id="guided-clear" class="secondary-button" type="button">Clear captured IPs</button>
+            </div>
+            <div id="guided-result" class="guided-result" aria-live="polite"></div>
+            <div id="guided-exposures" class="guided-exposures"></div>
+            <div id="guided-paths" class="guided-paths"></div>
+            <div id="guided-coverage" class="guided-coverage"></div>
 
-        <div class="guided-media">
-          <h3>Optional media-permission WebRTC test</h3>
-          <p class="card-detail guided-media-copy">Your browser may ask for camera/microphone permission. Media is not recorded and is not uploaded by this project. Tracks are stopped immediately after the WebRTC diagnostic.</p>
-          <div class="guided-controls">
-            <button id="media-webrtc-button" class="secondary-button" type="button">Run media-permission test</button>
-          </div>
-          <div id="media-webrtc-status" class="monitor-status">Not run</div>
-          <div id="media-webrtc-result"></div>
-        </div>
-      </section>
+            <div class="guided-media">
+              <h3>Optional media-permission WebRTC test</h3>
+              <p class="card-detail guided-media-copy">Your browser may ask for camera/microphone permission. Media is not recorded and is not uploaded by this project. Tracks are stopped immediately after the WebRTC diagnostic.</p>
+              <div class="guided-controls">
+                <button id="media-webrtc-button" class="secondary-button" type="button">Run media-permission test</button>
+              </div>
+              <div id="media-webrtc-status" class="monitor-status">Not run</div>
+              <div id="media-webrtc-result"></div>
+            </div>
+          </section>
+        </details>
 
-      <section id="aggressive-section" class="monitor-shell aggressive-shell" aria-labelledby="aggressive-heading">
-        <div class="monitor-header">
-          <div>
-            <p class="eyebrow">High-frequency leak test</p>
-            <h2 id="aggressive-heading">Aggressive Leak Test</h2>
-            <p class="card-detail">For 60 seconds, repeatedly compare IPv4/IPv6 HTTP, STUN, echo and TLS paths while you disconnect or reconnect the VPN. This mode sends frequent third-party requests only while the test is running.</p>
-          </div>
-          <button id="aggressive-toggle" class="primary-button" type="button">Start 60s test</button>
-        </div>
-        <div id="aggressive-status" class="monitor-status">Not running</div>
-        <div id="aggressive-progress" class="aggressive-progress" aria-live="polite"></div>
-        <div id="aggressive-summary" class="aggressive-summary"></div>
-        <div id="aggressive-exposures" class="aggressive-exposures"></div>
-        <div id="aggressive-timeline" class="monitor-timeline"></div>
+        <details id="monitor-test-disclosure" class="active-test-row">
+          <summary><span>Kill Switch test</span><span class="active-test-meta">Manual</span></summary>
+          <section id="monitor-section" class="monitor-shell active-test-content" aria-labelledby="monitor-heading">
+            <div class="monitor-header">
+              <div>
+                <p class="eyebrow">Interactive test</p>
+                <h2 id="monitor-heading">Kill Switch test</h2>
+                <p class="card-detail">Monitor public addresses while you disconnect or reconnect the VPN.</p>
+              </div>
+              <button id="monitor-toggle" class="secondary-button" type="button">Start monitoring</button>
+            </div>
+            <div id="monitor-status" class="monitor-status">Not running</div>
+            <div id="monitor-timeline" class="monitor-timeline"></div>
+          </section>
+        </details>
+
+        <details id="aggressive-test-disclosure" class="active-test-row">
+          <summary><span>Aggressive Leak Test</span><span class="active-test-meta">60 seconds</span></summary>
+          <section id="aggressive-section" class="monitor-shell aggressive-shell active-test-content" aria-labelledby="aggressive-heading">
+            <div class="monitor-header">
+              <div>
+                <p class="eyebrow">High-frequency leak test</p>
+                <h2 id="aggressive-heading">Aggressive Leak Test</h2>
+                <p class="card-detail">For 60 seconds, repeatedly compare IPv4/IPv6 HTTP, STUN, echo and TLS paths while you disconnect or reconnect the VPN. This mode sends frequent third-party requests only while the test is running.</p>
+              </div>
+              <button id="aggressive-toggle" class="primary-button" type="button">Start 60s test</button>
+            </div>
+            <div id="aggressive-status" class="monitor-status">Not running</div>
+            <div id="aggressive-progress" class="aggressive-progress" aria-live="polite"></div>
+            <div id="aggressive-summary" class="aggressive-summary"></div>
+            <div id="aggressive-exposures" class="aggressive-exposures"></div>
+            <div id="aggressive-timeline" class="monitor-timeline"></div>
+          </section>
+        </details>
       </section>
 
       <div class="report-actions">

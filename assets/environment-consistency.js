@@ -31,7 +31,7 @@ function detectHintsPlatform(userAgentData) {
 export function assessEnvironmentConsistency({ browser = {}, fingerprint = {}, privacy = {} } = {}) {
   const findings = [];
   const uaPlatform = detectUaPlatform(browser.userAgent);
-  const legacyPlatform = detectLegacyPlatform(browser.platform);
+  const legacyPlatform = detectLegacyPlatform(browser.legacyPlatform ?? browser.platform);
   const hintsPlatform = detectHintsPlatform(browser.userAgentData);
 
   if (uaPlatform !== 'unknown' && legacyPlatform !== 'unknown') {
@@ -54,7 +54,6 @@ export function assessEnvironmentConsistency({ browser = {}, fingerprint = {}, p
     findings.push(finding('mobile-environment-contradiction', 'Mobile browser metadata conflicts with desktop signals', 'Mobile User-Agent is combined with a desktop platform and zero touch points.'));
   }
 
-  // Timezone mismatch is already represented by privacy-assessment; do not duplicate it here.
   const signals = { uaPlatform, legacyPlatform, hintsPlatform, webglRenderer: fingerprint?.webgl?.renderer ?? null, timezoneMatch: privacy.timezoneMatch ?? null };
   return { status: findings.length ? 'review' : (uaPlatform === 'unknown' && legacyPlatform === 'unknown' && hintsPlatform === 'unknown' ? 'insufficient' : 'consistent'), findings, signals };
 }

@@ -50,7 +50,7 @@ export function createMonitorEnricher({ geoLookup, intelligenceLookup }) {
     async enrichEvent(event, context = {}) {
       if (!event?.address) return { ...event, enrichmentStatus: 'skipped', transitionLabel: 'Public IP changed' };
       const current = await lookup(event.address);
-      const previous = event.previousAddress ? await lookup(event.previousAddress) : (context.previous ?? null);
+      const previous = context.previous ?? null;
       const transitionLabel = classifyMonitorTransition({ previous: previous ?? {}, current: current ?? {} });
       return { ...event, enrichmentStatus: current?.enrichmentStatus ?? 'unavailable', geo: current?.geo ?? null, intelligence: current?.intelligence ?? null, transitionLabel };
     },

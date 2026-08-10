@@ -1,3 +1,5 @@
+import { buildAggressiveTestView } from './active-test-view.js';
+
 function clear(node) { node?.replaceChildren?.(); }
 function appendText(parent, text, className) {
   if (!parent) return null;
@@ -15,29 +17,50 @@ function formatMs(ms) {
 }
 
 function resultLabel(state) {
-  if (state.status === 'running') return 'Running';
+  if (state.status === 'running') return state.endsAt == null ? 'Preparing baseline' : 'Running';
   return state.resultLabel ?? (state.result === 'leak' ? 'Leak detected' : state.result === 'clean' ? 'No unexpected IP observed' : state.result === 'inconclusive' ? 'Inconclusive' : 'Not running');
 }
 
-export function renderAggressiveLeakTest(elements, state, nowMs = Date.now()) {
-  const { toggle, status, progress, summary, timeline, exposures } = elements;
+function renderResultPanel(parent, view) {
+  clear(parent);
+  if (!parent || !view?.resultLabel) return;
+  const panel = document.createElement('div');
+  panel.className = `test-result-panel test-result-${view.resultTone ?? 'neutral'}`;
+  appendText(panel, 'RESULT', 'test-result-kicker');
+  appendText(panel, view.resultLabel, 'test-result-title');
+  if (view.resultMessage) appendText(panel, view.resultMessage, 'test-result-message');
+  parent.append(panel);
+}
+
+export function renderAggressiveTimer(elements, state, nowMs = Date.now()) {
   if (!state) return;
+  const view = buildAggressiveTestView(state, nowMs);
+  if (elements.summaryStatus) elements.summaryStatus.textContent = view.summaryStatus;
+  if (elements.timer) elements.timer.textContent = view.remainingText ?? (view.phase === 'preparing' ? 'Preparing baseline…' : '');
+  if (elements.progressBar) elements.progressBar.style.width = `${Math.round((view.progress ?? 0) * 100)}%`;
+  return view;
+}
+
+export function renderAggressiveLeakTest(elements, state, nowMs = Date.now()) {
+  const { toggle, status, progress, summary, timeline, exposures, resultPanel } = elements;
+  if (!state) return;
+  const view = renderAggressiveTimer(elements, state, nowMs);
   if (toggle) toggle.textContent = state.status === 'running' ? 'Stop test' : 'Start 60s test';
   if (status) {
     status.textContent = resultLabel(state);
     status.dataset.status = state.result ?? state.status;
   }
 
+  renderResultPanel(resultPanel, view);
+
   clear(progress);
-  if (state.status === 'running') {
-    const remaining = Math.max(0, (state.endsAt ?? nowMs) - nowMs);
-    appendText(progress, `${Math.ceil(remaining / 1000)} s remaining`, 'aggressive-remaining');
-  } else if (state.coverage) {
+  if (state.status === 'running' && state.endsAt == null) {
+    appendText(progress, 'The 60-second observation window starts after baseline checks finish.', 'aggressive-coverage');
+  } else if (state.status !== 'running' && state.coverage) {
     appendText(progress, `Coverage: ${state.coverage.successfulHttpSamples}/${state.coverage.attemptedFastSamples} successful HTTP observations · largest gap ${formatMs(state.coverage.largestGapMs)}`, 'aggressive-coverage');
   }
 
   clear(summary);
-  if (state.resultLabel) appendText(summary, state.resultLabel, `aggressive-result aggressive-result-${state.result ?? 'unknown'}`);
   for (const reason of state.reasons ?? []) appendText(summary, reason, 'aggressive-reason');
 
   clear(exposures);

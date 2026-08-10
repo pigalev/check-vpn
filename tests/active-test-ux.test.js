@@ -42,8 +42,34 @@ test('Guided timer is presentation-only and derives from existing stress state',
   assert.match(guidedRuntime, /hasPresentationTimer/);
 });
 
+test('WebRTC Permission Check is a separate fourth Active test and explains Guided baseline sharing', async () => {
+  for (const id of ['webrtc-test-disclosure','webrtc-test-summary-status','media-webrtc-baseline','media-webrtc-timer','media-webrtc-button','media-webrtc-result']) {
+    assert.match(html, new RegExp(`id=["']${id}["']`));
+  }
+  const guidedStart = html.indexOf('id="guided-test-disclosure"');
+  const aggressiveStart = html.indexOf('id="aggressive-test-disclosure"');
+  const monitorStart = html.indexOf('id="monitor-test-disclosure"');
+  const webrtcStart = html.indexOf('id="webrtc-test-disclosure"');
+  assert.ok(guidedStart >= 0 && aggressiveStart > guidedStart && monitorStart > aggressiveStart && webrtcStart > monitorStart);
+  assert.doesNotMatch(html.slice(guidedStart, aggressiveStart), /media-webrtc-button/);
+  assert.match(html, /Baseline: Guided VPN Leak Test/);
+  assert.match(html, /Standalone mode/);
+  const mediaRender = await readFile(new URL('../assets/webrtc-media-render.js', import.meta.url), 'utf8');
+  assert.match(mediaRender, /buildMediaWebRtcTestView/);
+  assert.match(mediaRender, /renderMediaWebRtcTimer/);
+});
+
+test('WebRTC Permission Check remains explicit and not the 60-second stress test', () => {
+  assert.match(html, /specialized WebRTC privacy path check/i);
+  assert.match(html, /not the 60-second VPN stress test/i);
+  assert.match(html, /camera\/microphone permission/i);
+  assert.match(html, /not recorded/i);
+  assert.match(html, /not uploaded/i);
+});
+
 test('collapsing Active test disclosures remains presentation-only', () => {
   assert.doesNotMatch(app, /guided-test-disclosure[^\n]*addEventListener\(['"]toggle/);
   assert.doesNotMatch(app, /aggressive-test-disclosure[^\n]*addEventListener\(['"]toggle/);
   assert.doesNotMatch(app, /monitor-test-disclosure[^\n]*addEventListener\(['"]toggle/);
+  assert.doesNotMatch(app, /webrtc-test-disclosure[^\n]*addEventListener\(['"]toggle/);
 });

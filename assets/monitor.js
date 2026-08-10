@@ -8,7 +8,16 @@ function addressMap(sample) {
 }
 
 export function createMonitorState() {
-  return { running: false, startedAt: null, sampleCount: 0, baseline: { 4: null, 6: null }, current: { 4: null, 6: null }, events: [] };
+  return {
+    running: false,
+    startedAt: null,
+    stoppedAt: null,
+    sampleCount: 0,
+    successfulSampleCount: 0,
+    baseline: { 4: null, 6: null },
+    current: { 4: null, 6: null },
+    events: []
+  };
 }
 
 function eventId(timestamp, family, previousAddress, address, index) {
@@ -17,7 +26,7 @@ function eventId(timestamp, family, previousAddress, address, index) {
 
 export function reduceMonitorState(state, action) {
   if (action.type === 'start') return { ...createMonitorState(), running: true, startedAt: action.timestamp };
-  if (action.type === 'stop') return { ...state, running: false };
+  if (action.type === 'stop') return { ...state, running: false, stoppedAt: action.timestamp ?? state.stoppedAt };
   if (action.type === 'replace-event') return { ...state, events: state.events.map((event) => event.id === action.event?.id ? action.event : event) };
   if (action.type !== 'sample') return state;
 
@@ -25,6 +34,7 @@ export function reduceMonitorState(state, action) {
   const next = { ...state.current };
   const baseline = { ...state.baseline };
   const events = [...state.events];
+  const usableSample = [4, 6].some((family) => observed[family] != null);
 
   for (const family of [4, 6]) {
     const address = observed[family];
@@ -37,7 +47,14 @@ export function reduceMonitorState(state, action) {
     next[family] = address;
   }
 
-  return { ...state, sampleCount: state.sampleCount + 1, baseline, current: next, events };
+  return {
+    ...state,
+    sampleCount: state.sampleCount + 1,
+    successfulSampleCount: state.successfulSampleCount + (usableSample ? 1 : 0),
+    baseline,
+    current: next,
+    events
+  };
 }
 
 export function monitorFindings(state) {
@@ -66,7 +83,9 @@ export function createIpMonitor({ sample, intervalMs = 5000, now = () => new Dat
     },
     stop() {
       if (timer != null) clearIntervalImpl(timer);
-      timer = null; state = reduceMonitorState(state, { type: 'stop' }); emit();
+      timer = null;
+      state = reduceMonitorState(state, { type: 'stop', timestamp: now() });
+      emit();
     }
   };
 }

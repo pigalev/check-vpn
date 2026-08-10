@@ -3,7 +3,7 @@ function arraysHaveValues(bucket) { return [4, 6].some((family) => (bucket?.[fam
 function publicMediaCandidates(media) { return (media?.newlyVisible ?? []).filter((item) => item?.classification === 'public' && item?.address); }
 
 export function formatClock(ms) {
-  const seconds = Math.max(0, Math.ceil((Number.isFinite(ms) ? ms : 0) / 1000));
+  const seconds = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 1000));
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;

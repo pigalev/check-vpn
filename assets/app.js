@@ -25,6 +25,7 @@ import { runWebRtcStress } from './webrtc-stress.js';
 import { buildConnectionView, buildLeakView, buildPrivacyView, buildAdvancedRowView } from './dashboard-view.js';
 import { buildMonitorTestView } from './active-test-view.js';
 import { createPresentationTicker } from './presentation-ticker.js';
+import { renderIpProviderEvidence } from './provider-evidence-render.js';
 
 const runButton = document.querySelector('#run-tests');
 const copyButton = document.querySelector('#copy-json');
@@ -113,7 +114,7 @@ function summaryRows(parent, entries) {
     row.className = `summary-row${entry.tone ? ` summary-row-${entry.tone}` : ''}`;
     const label = document.createElement('span'); label.className = 'summary-row-label'; label.textContent = entry.label;
     const value = document.createElement('span'); value.className = 'summary-row-value';
-    if (entry.value instanceof Node) value.append(entry.value); else value.textContent = String(entry.value);
+    if (entry.value instanceof Node) value.append(value); else value.textContent = String(entry.value);
     row.append(label, value); list.append(row);
   }
   parent.append(list);
@@ -392,7 +393,8 @@ async function runAdvanced(force = false) {
   if (!currentReport || (!force && advancedRunId === currentRunId)) return;
   advancedRunId = currentRunId; advancedButton.disabled = true; advancedResults.replaceChildren();
   const loading = document.createElement('p'); loading.className = 'advanced-loading'; loading.textContent = 'Running best-effort checks…'; advancedResults.append(loading);
-  const ips = [currentReport.ipv4?.address, currentReport.ipv6?.address].filter(Boolean);
+  const ipEntries = [currentReport.ipv4, currentReport.ipv6].filter((result) => result?.address);
+  const ips = ipEntries.map((result) => result.address);
   const [intelligence, reverseDns, stun, httpInspection, tlsFingerprint, fingerprintExposure] = await Promise.all([
     Promise.all(ips.map((ip) => runNetworkIntelligence({ ip, endpointTemplate: networkConfig.intelligenceUrlTemplate, timeoutMs: networkConfig.advancedTimeoutMs }))),
     Promise.all(ips.map((ip) => runReverseDns({ ip, resolvers: networkConfig.dohResolvers, timeoutMs: networkConfig.advancedTimeoutMs }))),
@@ -410,6 +412,7 @@ async function runAdvanced(force = false) {
     const row = advancedDisclosure({ id: `network-${ip.includes(':') ? 'v6' : 'v4'}`, title: `${ip.includes(':') ? 'IPv6' : 'IPv4'} network`, status: intel?.status === 'complete' ? 'complete' : 'partial', summary: [intel?.asn, intel?.organization].filter(Boolean).join(' · ') || ip });
     text(row.body, ip, 'card-value'); rows(row.body, intelligenceRows(intel));
     rows(row.body, [['Reverse DNS', ptr?.names?.join(', ') || (ptr?.status === 'complete' ? 'No PTR record' : 'Unavailable')], ['PTR resolvers', `${ptr?.agreement?.available ?? 0}/${ptr?.agreement?.total ?? 0}${ptr?.agreement?.agree ? ' · agree' : ' · differ'}`]]);
+    renderIpProviderEvidence(row.body, ipEntries[index]);
   });
 
   const tlsAvailable = ['complete', 'partial'].includes(tlsFingerprint.status);

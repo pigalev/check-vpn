@@ -1,3 +1,5 @@
+import { buildGuidedTestView } from './active-test-view.js';
+
 function clear(node) { node?.replaceChildren?.(); }
 function add(parent, text, className = '') {
   if (!parent) return null;
@@ -38,13 +40,45 @@ function relationLabel(relation) {
   return 'Not detected';
 }
 
-export function renderGuidedLeak(elements, viewModel = {}) {
+function guidedView(viewModel, nowMs) {
+  return buildGuidedTestView({
+    profile: viewModel.profile ?? { step: viewModel.step ?? 'real' },
+    stressState: viewModel.stressState ?? null,
+    stressIsGuided: viewModel.stressIsGuided === true,
+    verdict: viewModel.verdict ?? null
+  }, nowMs);
+}
+
+function renderResultPanel(parent, view) {
+  clear(parent);
+  if (!parent || !view?.resultLabel) return;
+  const panel = document.createElement('div');
+  panel.className = `test-result-panel test-result-${view.resultTone ?? 'neutral'}`;
+  add(panel, 'RESULT', 'test-result-kicker');
+  const title = add(panel, view.resultLabel, 'test-result-title');
+  title?.setAttribute('data-result', view.resultTone ?? 'neutral');
+  if (view.resultMessage) add(panel, view.resultMessage, 'test-result-message');
+  parent.append(panel);
+}
+
+export function renderGuidedTimer(elements, viewModel = {}, nowMs = Date.now()) {
+  const view = guidedView(viewModel, nowMs);
+  if (elements.summaryStatus) elements.summaryStatus.textContent = view.summaryStatus;
+  if (elements.timer) {
+    elements.timer.textContent = view.remainingText ?? (view.phase === 'preparing' ? 'Preparing baseline…' : '');
+  }
+  if (elements.progressBar) elements.progressBar.style.width = `${Math.round((view.progress ?? 0) * 100)}%`;
+  return view;
+}
+
+export function renderGuidedLeak(elements, viewModel = {}, nowMs = Date.now()) {
   const {
     step, instructions, real, vpn, primary, secondary, result, exposures, paths, coverage,
     mediaStatus, mediaResult
   } = elements;
   const currentStep = viewModel.step ?? 'real';
   const profile = viewModel.profile ?? {};
+  const view = renderGuidedTimer(elements, viewModel, nowMs);
 
   if (step) step.textContent = currentStep === 'real' ? 'Step 1 of 3' : currentStep === 'vpn' ? 'Step 2 of 3' : 'Step 3 of 3';
   if (instructions) {
@@ -52,7 +86,11 @@ export function renderGuidedLeak(elements, viewModel = {}) {
       ? 'Turn VPN off, then capture your real connection.'
       : currentStep === 'vpn'
         ? 'Turn VPN on, wait for it to connect, then capture the VPN connection.'
-        : 'Keep the VPN connected and run the 60-second stress test.';
+        : view.phase === 'preparing'
+          ? 'Preparing baseline checks. The 60-second observation window starts after this finishes.'
+          : view.phase === 'running'
+            ? 'Keep the VPN connected and reproduce the transition during the 60-second stress test.'
+            : 'Keep the VPN connected and run the 60-second stress test.';
   }
   if (primary) {
     primary.textContent = getGuidedPrimaryLabel({ step: currentStep, busy: viewModel.busy });
@@ -75,12 +113,7 @@ export function renderGuidedLeak(elements, viewModel = {}) {
   add(vpn, `IPv6 · ${addressLine(profile, 'knownVpn', 6, 'Not detected')}`, 'guided-address');
   if (viewModel.vpnUnconfirmed) add(vpn, 'VPN connection not confirmed. Current public address still matches the captured real address.', 'inline-warning');
 
-  clear(result);
-  if (viewModel.verdict) {
-    const label = add(result, getGuidedResultLabel(viewModel.verdict), `guided-verdict guided-verdict-${viewModel.verdict.result}`);
-    label?.setAttribute('data-result', viewModel.verdict.result);
-    for (const reason of viewModel.verdict.reasons ?? []) add(result, reason, 'guided-reason');
-  }
+  renderResultPanel(result, view);
 
   clear(exposures);
   for (const exposure of viewModel.exposures ?? []) {

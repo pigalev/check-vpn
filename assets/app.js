@@ -17,12 +17,14 @@ import { compareStunMappings } from './stun-mapping.js';
 import { createIpMonitor, monitorFindings } from './monitor.js';
 import { createMonitorEnricher } from './monitor-enrichment.js';
 import { createAggressiveLeakTest } from './aggressive-leak-test.js';
-import { renderAggressiveLeakTest } from './aggressive-leak-render.js';
+import { renderAggressiveLeakTest, renderAggressiveTimer } from './aggressive-leak-render.js';
 import { createAggressiveLeakEnricher } from './aggressive-leak-enrichment.js';
 import { createGuidedAppRuntime } from './guided-app-runtime.js';
 import { collectProviderObservations } from './provider-observations.js';
 import { runWebRtcStress } from './webrtc-stress.js';
 import { buildConnectionView, buildLeakView, buildPrivacyView, buildAdvancedRowView } from './dashboard-view.js';
+import { buildMonitorTestView } from './active-test-view.js';
+import { createPresentationTicker } from './presentation-ticker.js';
 
 const runButton = document.querySelector('#run-tests');
 const copyButton = document.querySelector('#copy-json');
@@ -40,13 +42,20 @@ const advancedButton = document.querySelector('#run-advanced');
 const monitorToggle = document.querySelector('#monitor-toggle');
 const monitorStatus = document.querySelector('#monitor-status');
 const monitorTimeline = document.querySelector('#monitor-timeline');
+const monitorSummaryStatus = document.querySelector('#monitor-test-summary-status');
+const monitorTimer = document.querySelector('#monitor-timer');
+const monitorResultPanel = document.querySelector('#monitor-result-panel');
 const aggressiveElements = {
   toggle: document.querySelector('#aggressive-toggle'),
   status: document.querySelector('#aggressive-status'),
   progress: document.querySelector('#aggressive-progress'),
   summary: document.querySelector('#aggressive-summary'),
   timeline: document.querySelector('#aggressive-timeline'),
-  exposures: document.querySelector('#aggressive-exposures')
+  exposures: document.querySelector('#aggressive-exposures'),
+  summaryStatus: document.querySelector('#aggressive-test-summary-status'),
+  timer: document.querySelector('#aggressive-timer'),
+  progressBar: document.querySelector('#aggressive-progress-bar'),
+  resultPanel: document.querySelector('#aggressive-result-panel')
 };
 
 let currentReport = null;
@@ -60,6 +69,7 @@ let guidedRuntime = null;
 let guidedStress = null;
 let guidedFindings = [];
 let guidedStressSampleCursor = 0;
+let presentationTicker = null;
 const enrichingEvents = new Set();
 const enrichingAggressive = new Set();
 
@@ -441,9 +451,25 @@ async function enrichPendingMonitorEvents(state) {
     finally { enrichingEvents.delete(event.id); }
   }
 }
-function renderMonitor(state) {
+
+function renderResultPanel(parent, view) {
+  parent?.replaceChildren?.();
+  if (!parent || !view?.resultLabel) return;
+  const panel = document.createElement('div'); panel.className = `test-result-panel test-result-${view.resultTone ?? 'neutral'}`;
+  text(panel, 'RESULT', 'test-result-kicker');
+  const title = document.createElement('strong'); title.className = 'test-result-title'; title.textContent = view.resultLabel; panel.append(title);
+  if (view.resultMessage) text(panel, view.resultMessage, 'test-result-message');
+  parent.append(panel);
+}
+
+function renderMonitor(state, nowMs = Date.now(), { evidence = true } = {}) {
+  const view = buildMonitorTestView(state, nowMs);
   monitorToggle.textContent = state.running ? 'Stop monitoring' : 'Start monitoring';
+  if (monitorSummaryStatus) monitorSummaryStatus.textContent = view.summaryStatus;
+  if (monitorTimer) monitorTimer.textContent = view.elapsedText ?? '';
+  renderResultPanel(monitorResultPanel, view);
   monitorStatus.textContent = state.running ? `Running · ${state.sampleCount} samples · IPv4 ${state.current[4] || 'none'} · IPv6 ${state.current[6] || 'none'}` : state.sampleCount ? `Stopped · ${state.sampleCount} samples · ${state.events.length} change events` : 'Not running';
+  if (!evidence) return;
   monitorTimeline.replaceChildren();
   for (const event of [...state.events].reverse()) {
     const row = document.createElement('div'); row.className = 'monitor-event';
@@ -452,10 +478,31 @@ function renderMonitor(state) {
     if (event.geo || event.intelligence) { const meta = document.createElement('span'); meta.className = 'monitor-enrichment'; meta.textContent = [event.geo?.country, event.intelligence?.asn ?? event.geo?.asn, event.intelligence?.organization ?? event.geo?.org].filter(Boolean).join(' · '); row.append(meta); }
     monitorTimeline.append(row);
   }
-  if (currentReport) currentReport.monitor = state; queueMicrotask(() => enrichPendingMonitorEvents(state));
+  if (currentReport) currentReport.monitor = state;
+  queueMicrotask(() => enrichPendingMonitorEvents(state));
 }
+
+function syncPresentationTicker() {
+  const active = Boolean(
+    monitor?.getState?.().running ||
+    (aggressiveMode === 'unguided' && aggressive?.getState?.().status === 'running') ||
+    guidedRuntime?.hasPresentationTimer?.()
+  );
+  presentationTicker?.sync(active);
+}
+
 function createMonitor() {
-  return createIpMonitor({ intervalMs: appConfig.monitorIntervalMs, sample: async () => { const [ipv4, ipv6] = await Promise.all([runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }), runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })]); return { ipv4, ipv6 }; }, onUpdate: (state) => { renderMonitor(state); reassess(); } });
+  return createIpMonitor({
+    intervalMs: appConfig.monitorIntervalMs,
+    sample: async () => {
+      const [ipv4, ipv6] = await Promise.all([
+        runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }),
+        runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })
+      ]);
+      return { ipv4, ipv6 };
+    },
+    onUpdate: (state) => { renderMonitor(state); syncPresentationTicker(); reassess(); }
+  });
 }
 
 function baselineMetadata() {
@@ -474,6 +521,7 @@ function handleAggressiveUpdate(state) {
   aggressiveMode = 'unguided'; renderAggressiveLeakTest(aggressiveElements, state);
   runButton.disabled = state.status === 'running' || guidedStressRunning();
   if (currentReport) currentReport.aggressive = state;
+  syncPresentationTicker();
   queueMicrotask(() => enrichAggressiveExposures(state)); reassess();
 }
 function createAggressiveController() {
@@ -509,6 +557,7 @@ function createGuidedStressController(profile, recordObservations, onStressUpdat
       const fresh = (state.samples ?? []).slice(guidedStressSampleCursor); guidedStressSampleCursor = state.samples?.length ?? guidedStressSampleCursor;
       if (fresh.length) recordObservations(fresh.map(guidedObservationRow)); onStressUpdate?.();
       runButton.disabled = state.status === 'running'; aggressiveElements.toggle.disabled = state.status === 'running';
+      syncPresentationTicker();
     }
   });
 }
@@ -520,7 +569,8 @@ async function startGuidedStress(profile, recordObservations, onStressUpdate) {
 function handleGuidedChange({ report, findings }) {
   guidedFindings = findings ?? []; if (currentReport) currentReport.guidedLeak = report;
   if (guidedRuntime?.isGuidedStress?.()) aggressiveMode = 'guided';
-  const isRunning = guidedStressRunning(); runButton.disabled = running || isRunning || aggressive?.getState?.().status === 'running'; aggressiveElements.toggle.disabled = isRunning; reassess();
+  const isRunning = guidedStressRunning(); runButton.disabled = running || isRunning || aggressive?.getState?.().status === 'running'; aggressiveElements.toggle.disabled = isRunning;
+  syncPresentationTicker(); reassess();
 }
 
 guidedRuntime = createGuidedAppRuntime({
@@ -528,6 +578,17 @@ guidedRuntime = createGuidedAppRuntime({
   ensureCore: async () => { if (!currentReport) await runCore(); }, startStress: startGuidedStress,
   stopStress: () => guidedStress?.stop?.(), getStressState: () => guidedStress?.getState?.() ?? null, onChange: handleGuidedChange
 });
+
+presentationTicker = createPresentationTicker({
+  onTick: (nowMs) => {
+    const aggressiveState = aggressive?.getState?.();
+    if (aggressiveMode === 'unguided' && aggressiveState?.status === 'running') renderAggressiveTimer(aggressiveElements, aggressiveState, nowMs);
+    const monitorState = monitor?.getState?.();
+    if (monitorState?.running) renderMonitor(monitorState, nowMs, { evidence: false });
+    guidedRuntime?.renderTimer?.(nowMs);
+  }
+});
+syncPresentationTicker();
 
 async function copyReport() {
   if (!currentReport) return;

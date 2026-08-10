@@ -64,18 +64,13 @@ function renderResultPanel(parent, view) {
 export function renderGuidedTimer(elements, viewModel = {}, nowMs = Date.now()) {
   const view = guidedView(viewModel, nowMs);
   if (elements.summaryStatus) elements.summaryStatus.textContent = view.summaryStatus;
-  if (elements.timer) {
-    elements.timer.textContent = view.remainingText ?? (view.phase === 'preparing' ? 'Preparing baseline…' : '');
-  }
+  if (elements.timer) elements.timer.textContent = view.remainingText ?? (view.phase === 'preparing' ? 'Preparing baseline…' : '');
   if (elements.progressBar) elements.progressBar.style.width = `${Math.round((view.progress ?? 0) * 100)}%`;
   return view;
 }
 
 export function renderGuidedLeak(elements, viewModel = {}, nowMs = Date.now()) {
-  const {
-    step, instructions, real, vpn, primary, secondary, result, exposures, paths, coverage,
-    mediaStatus, mediaResult
-  } = elements;
+  const { step, instructions, real, vpn, primary, secondary, result, exposures, paths, coverage } = elements;
   const currentStep = viewModel.step ?? 'real';
   const profile = viewModel.profile ?? {};
   const view = renderGuidedTimer(elements, viewModel, nowMs);
@@ -93,8 +88,9 @@ export function renderGuidedLeak(elements, viewModel = {}, nowMs = Date.now()) {
             : 'Keep the VPN connected and run the 60-second stress test.';
   }
   if (primary) {
-    primary.textContent = getGuidedPrimaryLabel({ step: currentStep, busy: viewModel.busy });
-    primary.disabled = viewModel.busy === true;
+    const stressRunning = viewModel.stressState?.status === 'running';
+    primary.textContent = getGuidedPrimaryLabel({ step: currentStep, busy: viewModel.busy || stressRunning });
+    primary.disabled = viewModel.busy === true || stressRunning;
   }
   if (secondary) {
     secondary.hidden = !(currentStep === 'vpn' && viewModel.vpnUnconfirmed);
@@ -141,11 +137,5 @@ export function renderGuidedLeak(elements, viewModel = {}, nowMs = Date.now()) {
   if (viewModel.coverage) {
     add(coverage, `${viewModel.coverage.attemptedFastSamples ?? 0} scheduled HTTP cycles · ${viewModel.coverage.webRtcSessionsCompleted ?? 0} WebRTC sessions`, 'guided-meta');
     if (Number.isFinite(viewModel.coverage.largestGapMs)) add(coverage, `Largest scheduler gap: ~${(viewModel.coverage.largestGapMs / 1000).toFixed(1)} s`, 'guided-meta');
-  }
-
-  if (mediaStatus) mediaStatus.textContent = viewModel.media?.status ? `Media WebRTC: ${viewModel.media.status}` : 'Not run';
-  clear(mediaResult);
-  if (viewModel.media?.newlyVisible?.length) {
-    for (const candidate of viewModel.media.newlyVisible) add(mediaResult, `${candidate.address} · ${candidate.classification ?? 'unknown'} · ${(candidate.protocol ?? 'unknown').toUpperCase()}`, 'guided-media-candidate');
   }
 }

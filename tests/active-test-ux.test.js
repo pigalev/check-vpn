@@ -4,9 +4,11 @@ import { readFile } from 'node:fs/promises';
 
 const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 const app = await readFile(new URL('../assets/app.js', import.meta.url), 'utf8');
+const css = await readFile(new URL('../assets/dashboard.css', import.meta.url), 'utf8');
 const aggressiveRender = await readFile(new URL('../assets/aggressive-leak-render.js', import.meta.url), 'utf8');
 const guidedRender = await readFile(new URL('../assets/guided-leak-render.js', import.meta.url), 'utf8');
 const guidedRuntime = await readFile(new URL('../assets/guided-app-runtime.js', import.meta.url), 'utf8');
+const providerRender = await readFile(new URL('../assets/provider-evidence-render.js', import.meta.url), 'utf8');
 
 test('Aggressive and Kill Switch expose live summary status and result timer containers', () => {
   for (const id of [
@@ -65,6 +67,37 @@ test('WebRTC Permission Check remains explicit and not the 60-second stress test
   assert.match(html, /camera\/microphone permission/i);
   assert.match(html, /not recorded/i);
   assert.match(html, /not uploaded/i);
+});
+
+test('Advanced network rows render already-collected public IP provider evidence', () => {
+  assert.match(app, /renderIpProviderEvidence/);
+  assert.match(app, /const ipEntries = \[currentReport\.ipv4, currentReport\.ipv6\]/);
+  assert.match(providerRender, /Public IP sources/);
+  assert.match(providerRender, /buildIpProviderEvidence/);
+  assert.match(providerRender, /result/);
+  assert.doesNotMatch(providerRender, /\bfetch\s*\(/);
+  assert.doesNotMatch(providerRender, /runIpConsensus/);
+});
+
+test('provider evidence has compact desktop rows and mobile stacking', () => {
+  assert.match(css, /\.provider-evidence\{/);
+  assert.match(css, /\.provider-source-row\{/);
+  assert.match(css, /\.provider-source-address\{/);
+  assert.match(css, /@media\(max-width:620px\)[\s\S]*\.provider-source-row\{grid-template-columns:1fr/);
+});
+
+test('all four active tests expose persistent collapsed statuses and result surfaces', () => {
+  for (const id of [
+    'guided-test-summary-status','guided-result',
+    'aggressive-test-summary-status','aggressive-result-panel',
+    'monitor-test-summary-status','monitor-result-panel',
+    'webrtc-test-summary-status','media-webrtc-result'
+  ]) assert.match(html, new RegExp(`id=["']${id}["']`));
+});
+
+test('copy report still reads Guided runtime state including media results', () => {
+  assert.match(app, /currentReport\.guidedLeak\s*=\s*guidedRuntime\?\.getReport/);
+  assert.match(guidedRuntime, /buildGuidedLeakReport\(\{ profile, captures, aggressive, media, observations \}\)/);
 });
 
 test('collapsing Active test disclosures remains presentation-only', () => {

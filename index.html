@@ -107,16 +107,6 @@
             <div id="guided-exposures" class="guided-exposures"></div>
             <div id="guided-paths" class="guided-paths"></div>
             <div id="guided-coverage" class="guided-coverage"></div>
-
-            <div class="guided-media">
-              <h3>Optional media-permission WebRTC test</h3>
-              <p class="card-detail guided-media-copy">Your browser may ask for camera/microphone permission. Media is not recorded and is not uploaded by this project. Tracks are stopped immediately after the WebRTC diagnostic.</p>
-              <div class="guided-controls">
-                <button id="media-webrtc-button" class="secondary-button" type="button">Run media-permission test</button>
-              </div>
-              <div id="media-webrtc-status" class="monitor-status">Not run</div>
-              <div id="media-webrtc-result"></div>
-            </div>
           </section>
         </details>
 
@@ -171,6 +161,29 @@
             <div id="monitor-result-panel" class="test-result-slot"></div>
             <div id="monitor-status" class="monitor-status">Not running</div>
             <div id="monitor-timeline" class="monitor-timeline"></div>
+          </section>
+        </details>
+
+        <details id="webrtc-test-disclosure" class="active-test-row">
+          <summary>
+            <span class="active-test-summary-copy">
+              <span class="active-test-name">WebRTC Permission Check</span>
+              <span class="active-test-purpose">Checks whether camera/microphone permission reveals additional WebRTC/ICE addresses.</span>
+            </span>
+            <span id="webrtc-test-summary-status" class="active-test-meta">Standalone</span>
+          </summary>
+          <section class="active-test-content" aria-labelledby="webrtc-test-heading">
+            <p class="test-explainer"><strong>What this test checks:</strong> Compares WebRTC address visibility before and after camera/microphone permission. This is a specialized WebRTC privacy path check, not the 60-second VPN stress test.</p>
+            <h2 id="webrtc-test-heading">WebRTC Permission Check</h2>
+            <p class="card-detail">If Guided captures are available, this uses <strong>Baseline: Guided VPN Leak Test</strong> to classify public addresses as Known Real, Known VPN, or unexpected. Otherwise it runs in <strong>Standalone mode</strong> and cannot prove that an address is your pre-VPN real IP.</p>
+            <p class="card-detail">Media is not recorded and is not uploaded by this project. Tracks are stopped immediately after the diagnostic.</p>
+            <div id="media-webrtc-baseline" class="test-baseline-note"></div>
+            <div id="media-webrtc-timer" class="test-timer" aria-live="polite"></div>
+            <div class="guided-controls">
+              <button id="media-webrtc-button" class="secondary-button" type="button">Run WebRTC permission check</button>
+            </div>
+            <div id="media-webrtc-status" class="monitor-status">Not run</div>
+            <div id="media-webrtc-result" class="test-result-slot" aria-live="polite"></div>
           </section>
         </details>
       </section>

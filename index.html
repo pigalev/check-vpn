@@ -111,38 +111,57 @@
           </section>
         </details>
 
-        <details id="monitor-test-disclosure" class="active-test-row">
-          <summary><span>Kill Switch test</span><span class="active-test-meta">Manual</span></summary>
-          <section id="monitor-section" class="monitor-shell active-test-content" aria-labelledby="monitor-heading">
-            <div class="monitor-header">
-              <div>
-                <p class="eyebrow">Interactive test</p>
-                <h2 id="monitor-heading">Kill Switch test</h2>
-                <p class="card-detail">Monitor public addresses while you disconnect or reconnect the VPN.</p>
-              </div>
-              <button id="monitor-toggle" class="secondary-button" type="button">Start monitoring</button>
-            </div>
-            <div id="monitor-status" class="monitor-status">Not running</div>
-            <div id="monitor-timeline" class="monitor-timeline"></div>
-          </section>
-        </details>
-
         <details id="aggressive-test-disclosure" class="active-test-row">
-          <summary><span>Aggressive Leak Test</span><span class="active-test-meta">60 seconds</span></summary>
+          <summary>
+            <span class="active-test-summary-copy">
+              <span class="active-test-name">Aggressive Leak Test</span>
+              <span class="active-test-purpose">Catches brief unexpected public IP changes, even without a pre-VPN capture.</span>
+            </span>
+            <span id="aggressive-test-summary-status" class="active-test-meta">Ready · 60 seconds</span>
+          </summary>
           <section id="aggressive-section" class="monitor-shell aggressive-shell active-test-content" aria-labelledby="aggressive-heading">
+            <p class="test-explainer"><strong>What this test checks:</strong> Watches HTTP, STUN, echo and TLS paths for 60 seconds while you reproduce a VPN transition.</p>
             <div class="monitor-header">
               <div>
                 <p class="eyebrow">High-frequency leak test</p>
                 <h2 id="aggressive-heading">Aggressive Leak Test</h2>
-                <p class="card-detail">For 60 seconds, repeatedly compare IPv4/IPv6 HTTP, STUN, echo and TLS paths while you disconnect or reconnect the VPN. This mode sends frequent third-party requests only while the test is running.</p>
+                <p class="card-detail">Unlike Guided, this can catch an unexpected public IP without first capturing your real IP, but that does not automatically prove the address is your home or mobile IP.</p>
               </div>
               <button id="aggressive-toggle" class="primary-button" type="button">Start 60s test</button>
             </div>
+            <div id="aggressive-timer" class="test-timer" aria-live="polite"></div>
+            <div class="test-progress-track" aria-hidden="true"><div id="aggressive-progress-bar" class="test-progress-bar"></div></div>
+            <div id="aggressive-result-panel" class="test-result-slot"></div>
             <div id="aggressive-status" class="monitor-status">Not running</div>
             <div id="aggressive-progress" class="aggressive-progress" aria-live="polite"></div>
             <div id="aggressive-summary" class="aggressive-summary"></div>
             <div id="aggressive-exposures" class="aggressive-exposures"></div>
             <div id="aggressive-timeline" class="monitor-timeline"></div>
+          </section>
+        </details>
+
+        <details id="monitor-test-disclosure" class="active-test-row">
+          <summary>
+            <span class="active-test-summary-copy">
+              <span class="active-test-name">Kill Switch test</span>
+              <span class="active-test-purpose">Monitors public IP while you manually disconnect or reconnect the VPN.</span>
+            </span>
+            <span id="monitor-test-summary-status" class="active-test-meta">Not running</span>
+          </summary>
+          <section id="monitor-section" class="monitor-shell active-test-content" aria-labelledby="monitor-heading">
+            <p class="test-explainer"><strong>What this test checks:</strong> Keeps watching your public IP until you stop it, so you can reproduce a VPN disconnect/reconnect and see whether the address changes.</p>
+            <div class="monitor-header">
+              <div>
+                <p class="eyebrow">Interactive transition monitor</p>
+                <h2 id="monitor-heading">Kill Switch test</h2>
+                <p class="card-detail">Best for a deliberate VPN Kill Switch check. There is no fixed duration: start monitoring, reproduce the transition, then stop it.</p>
+              </div>
+              <button id="monitor-toggle" class="secondary-button" type="button">Start monitoring</button>
+            </div>
+            <div id="monitor-timer" class="test-timer" aria-live="polite"></div>
+            <div id="monitor-result-panel" class="test-result-slot"></div>
+            <div id="monitor-status" class="monitor-status">Not running</div>
+            <div id="monitor-timeline" class="monitor-timeline"></div>
           </section>
         </details>
       </section>

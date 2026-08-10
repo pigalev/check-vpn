@@ -5,7 +5,7 @@ import { classifyLeakAddress } from './leak-classifier.js';
 import { runWebRtcStress } from './webrtc-stress.js';
 import { runWebRtcMediaPermissionTest } from './webrtc-media-test.js';
 import { buildGuidedLeakReport } from './leak-report.js';
-import { renderGuidedLeak } from './guided-leak-render.js';
+import { renderGuidedLeak, renderGuidedTimer } from './guided-leak-render.js';
 
 function unique(values) { return [...new Set((values ?? []).filter(Boolean))]; }
 function hasAddresses(bucket) { return (bucket?.[4]?.length ?? 0) > 0 || (bucket?.[6]?.length ?? 0) > 0; }
@@ -47,6 +47,9 @@ export function createGuidedAppRuntime({
     exposures: document.querySelector('#guided-exposures'),
     paths: document.querySelector('#guided-paths'),
     coverage: document.querySelector('#guided-coverage'),
+    summaryStatus: document.querySelector('#guided-test-summary-status'),
+    timer: document.querySelector('#guided-timer'),
+    progressBar: document.querySelector('#guided-progress-bar'),
     mediaStatus: document.querySelector('#media-webrtc-status'),
     mediaResult: document.querySelector('#media-webrtc-result')
   };
@@ -106,11 +109,14 @@ export function createGuidedAppRuntime({
 
   function viewModel() {
     const report = getReport();
+    const stressState = stressIsGuided ? (getStressState?.() ?? null) : null;
     return {
       step: profile.step,
       profile,
       busy,
       vpnUnconfirmed,
+      stressIsGuided,
+      stressState,
       verdict: (stressIsGuided || media) ? report.verdict : null,
       exposures: report.exposures,
       paths: report.paths,
@@ -163,7 +169,7 @@ export function createGuidedAppRuntime({
   }
 
   async function handlePrimary() {
-    if (busy) return;
+    if (busy || getStressState?.()?.status === 'running') return;
     if (profile.step === 'stress') {
       await ensureCore?.();
       observations = [];
@@ -235,6 +241,8 @@ export function createGuidedAppRuntime({
     getReport,
     getFindings,
     isGuidedStress: () => stressIsGuided,
+    hasPresentationTimer: () => stressIsGuided && getStressState?.()?.status === 'running',
+    renderTimer(nowMs = Date.now()) { renderGuidedTimer(elements, viewModel(), nowMs); },
     recordObservations(items) { observations.push(...(items ?? [])); notify(); },
     handleStressUpdate() { notify(); },
     clear: handleClear,

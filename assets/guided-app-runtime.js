@@ -6,6 +6,7 @@ import { runWebRtcStress } from './webrtc-stress.js';
 import { runWebRtcMediaPermissionTest } from './webrtc-media-test.js';
 import { buildGuidedLeakReport } from './leak-report.js';
 import { renderGuidedLeak, renderGuidedTimer } from './guided-leak-render.js';
+import { renderMediaWebRtc, renderMediaWebRtcTimer } from './webrtc-media-render.js';
 
 function unique(values) { return [...new Set((values ?? []).filter(Boolean))]; }
 function hasAddresses(bucket) { return (bucket?.[4]?.length ?? 0) > 0 || (bucket?.[6]?.length ?? 0) > 0; }
@@ -31,6 +32,7 @@ export function createGuidedAppRuntime({
   let profile = store.load();
   let captures = { real: null, vpn: null };
   let media = null;
+  let mediaRun = { running: false, startedAtMs: null, completedAtMs: null };
   let observations = [];
   let busy = false;
   let vpnUnconfirmed = false;
@@ -49,9 +51,14 @@ export function createGuidedAppRuntime({
     coverage: document.querySelector('#guided-coverage'),
     summaryStatus: document.querySelector('#guided-test-summary-status'),
     timer: document.querySelector('#guided-timer'),
-    progressBar: document.querySelector('#guided-progress-bar'),
-    mediaStatus: document.querySelector('#media-webrtc-status'),
-    mediaResult: document.querySelector('#media-webrtc-result')
+    progressBar: document.querySelector('#guided-progress-bar')
+  };
+  const mediaElements = {
+    summaryStatus: document.querySelector('#webrtc-test-summary-status'),
+    baseline: document.querySelector('#media-webrtc-baseline'),
+    timer: document.querySelector('#media-webrtc-timer'),
+    status: document.querySelector('#media-webrtc-status'),
+    result: document.querySelector('#media-webrtc-result')
   };
   const clearButton = document.querySelector('#guided-clear');
   const mediaWebRtcButton = document.querySelector('#media-webrtc-button');
@@ -63,17 +70,31 @@ export function createGuidedAppRuntime({
     return { ...(state?.coverage ?? {}), webRtcSessionsCompleted, transportClassesReached, reconnectHttpAttempts };
   }
 
-  function mediaExposures() {
+  function mediaClassifications() {
     const result = [];
     for (const candidate of media?.newlyVisible ?? []) {
+      if (!candidate?.address) continue;
       const classification = classifyLeakAddress(candidate.address, profile);
-      if (!['known-real', 'unknown-public'].includes(classification.relation)) continue;
+      if (!['known-real', 'known-vpn', 'unknown-public'].includes(classification.relation)) continue;
       result.push({
-        key: `media|${candidate.family}|${candidate.address}`,
         address: candidate.address,
         family: candidate.family,
         relation: classification.relation,
-        confirmationLevel: classification.relation === 'known-real' ? 'known-real' : 'unconfirmed-unknown',
+        candidate
+      });
+    }
+    return result;
+  }
+
+  function mediaExposures() {
+    return mediaClassifications()
+      .filter((item) => ['known-real', 'unknown-public'].includes(item.relation))
+      .map((item) => ({
+        key: `media|${item.family}|${item.address}`,
+        address: item.address,
+        family: item.family,
+        relation: item.relation,
+        confirmationLevel: item.relation === 'known-real' ? 'known-real' : 'unconfirmed-unknown',
         observationCount: 1,
         channels: ['webrtc-media'],
         transportClasses: ['webrtc-media'],
@@ -82,9 +103,7 @@ export function createGuidedAppRuntime({
         perChannelCounts: { 'webrtc-media': 1 },
         firstDetector: 'Media-permission WebRTC',
         approxExposureMs: null
-      });
-    }
-    return result;
+      }));
   }
 
   function getReport() {
@@ -96,13 +115,18 @@ export function createGuidedAppRuntime({
   function getFindings() {
     const report = getReport();
     const verdict = report.verdict;
+    const mediaOnly = Boolean(media && !stressIsGuided);
     if (verdict.result === 'real-leak') return report.exposures.filter((item) => item.relation === 'known-real').map((item) => ({
-      id: `guided-real-${item.family}-${item.address}`,
-      severity: 'leak', category: 'guided', summary: `Known real IPv${item.family} exposed`,
+      id: `${mediaOnly ? 'webrtc-media-real' : 'guided-real'}-${item.family}-${item.address}`,
+      severity: 'leak', category: 'guided', summary: mediaOnly ? `Known real IPv${item.family} exposed through WebRTC` : `Known real IPv${item.family} exposed`,
       details: `${item.address} · ${(item.sources ?? []).join(', ') || 'guided test'}`, sources: ['guided-test', ...(item.channels ?? [])]
     }));
     if (verdict.result === 'unexpected-leak') return [{ id: 'guided-unexpected-public', severity: 'leak', category: 'guided', summary: 'Unexpected public IP confirmed', details: verdict.reasons.join(' '), sources: ['guided-test'] }];
-    if (verdict.result === 'review') return [{ id: 'guided-review', severity: 'review', category: 'guided', summary: 'Guided leak test needs review', details: verdict.reasons.join(' '), sources: ['guided-test'] }];
+    if (verdict.result === 'review') return [{
+      id: mediaOnly ? 'webrtc-media-review' : 'guided-review', severity: 'review', category: 'guided',
+      summary: mediaOnly ? 'Unexpected public WebRTC IP observed' : 'Guided leak test needs review',
+      details: verdict.reasons.join(' '), sources: [mediaOnly ? 'webrtc-media' : 'guided-test']
+    }];
     if (verdict.result === 'inconclusive' && profile.step === 'stress' && stressIsGuided) return [{ id: 'guided-inconclusive', severity: 'review', category: 'guided', summary: 'Guided leak test was inconclusive', details: verdict.reasons.join(' '), sources: ['guided-test'] }];
     return [];
   }
@@ -117,16 +141,20 @@ export function createGuidedAppRuntime({
       vpnUnconfirmed,
       stressIsGuided,
       stressState,
-      verdict: (stressIsGuided || media) ? report.verdict : null,
-      exposures: report.exposures,
-      paths: report.paths,
-      coverage: stressIsGuided ? report.coverage : null,
-      media
+      verdict: stressIsGuided ? report.verdict : null,
+      exposures: stressIsGuided ? report.exposures : [],
+      paths: stressIsGuided ? report.paths : [],
+      coverage: stressIsGuided ? report.coverage : null
     };
+  }
+
+  function mediaViewModel() {
+    return { profile, media, mediaRun, mediaClassifications: mediaClassifications() };
   }
 
   function notify() {
     renderGuidedLeak(elements, viewModel());
+    renderMediaWebRtc(mediaElements, mediaViewModel());
     if (mediaWebRtcButton) mediaWebRtcButton.disabled = busy || getStressState?.()?.status === 'running';
     onChange({ report: getReport(), findings: getFindings(), profile });
   }
@@ -174,6 +202,7 @@ export function createGuidedAppRuntime({
       await ensureCore?.();
       observations = [];
       media = null;
+      mediaRun = { running: false, startedAtMs: null, completedAtMs: null };
       stressIsGuided = true;
       await startStress?.(profile, (items) => { observations.push(...items); }, () => notify());
       notify();
@@ -210,6 +239,7 @@ export function createGuidedAppRuntime({
     profile = store.clear();
     captures = { real: null, vpn: null };
     media = null;
+    mediaRun = { running: false, startedAtMs: null, completedAtMs: null };
     observations = [];
     busy = false;
     vpnUnconfirmed = false;
@@ -218,8 +248,10 @@ export function createGuidedAppRuntime({
   }
 
   async function handleMedia() {
-    if (busy || getStressState?.()?.status === 'running') return;
-    busy = true; notify();
+    if (busy || getStressState?.()?.status === 'running' || mediaRun.running) return;
+    busy = true;
+    mediaRun = { running: true, startedAtMs: Date.now(), completedAtMs: null };
+    notify();
     try {
       const getUserMedia = navigator.mediaDevices?.getUserMedia ? (constraints) => navigator.mediaDevices.getUserMedia(constraints) : null;
       const runStress = () => runWebRtcStress({ destinations: networkConfig.stunDestinations, timeoutMs: networkConfig.webrtcTimeoutMs, trigger: 'media-permission' });
@@ -227,7 +259,11 @@ export function createGuidedAppRuntime({
       for (const candidate of media?.after?.candidates ?? []) {
         observations.push({ status: 'complete', successful: true, address: candidate.address, family: candidate.family, serverId: candidate.serverId, providerLabel: candidate.serverLabel ?? 'Media WebRTC', providerGroup: candidate.serverGroup, transportClass: 'webrtc-media', timestampMs: candidate.timestampMs ?? Date.now(), sessionId: candidate.sessionId });
       }
-    } finally { busy = false; notify(); }
+    } finally {
+      mediaRun = { running: false, startedAtMs: mediaRun.startedAtMs, completedAtMs: Date.now() };
+      busy = false;
+      notify();
+    }
   }
 
   elements.primary?.addEventListener('click', handlePrimary);
@@ -241,8 +277,11 @@ export function createGuidedAppRuntime({
     getReport,
     getFindings,
     isGuidedStress: () => stressIsGuided,
-    hasPresentationTimer: () => stressIsGuided && getStressState?.()?.status === 'running',
-    renderTimer(nowMs = Date.now()) { renderGuidedTimer(elements, viewModel(), nowMs); },
+    hasPresentationTimer: () => (stressIsGuided && getStressState?.()?.status === 'running') || mediaRun.running,
+    renderTimer(nowMs = Date.now()) {
+      renderGuidedTimer(elements, viewModel(), nowMs);
+      renderMediaWebRtcTimer(mediaElements, mediaViewModel(), nowMs);
+    },
     recordObservations(items) { observations.push(...(items ?? [])); notify(); },
     handleStressUpdate() { notify(); },
     clear: handleClear,

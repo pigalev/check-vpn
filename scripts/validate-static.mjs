@@ -33,15 +33,20 @@ const required = [
   'assets/aggressive-leak-render.js',
   'assets/guided-leak-profile.js',
   'assets/provider-observations.js',
+  'assets/provider-evidence.js',
+  'assets/provider-evidence-render.js',
   'assets/guided-leak-capture.js',
   'assets/leak-classifier.js',
   'assets/reconnect-burst.js',
   'assets/webrtc-stress.js',
   'assets/webrtc-media-test.js',
+  'assets/webrtc-media-render.js',
   'assets/leak-report.js',
   'assets/guided-leak-render.js',
   'assets/guided-app-runtime.js',
   'assets/dashboard-view.js',
+  'assets/active-test-view.js',
+  'assets/presentation-ticker.js',
   'assets/assessment.js',
   'assets/app.js'
 ];
@@ -56,7 +61,7 @@ if (!html.includes('./assets/styles.css') || !html.includes('./assets/dashboard.
 const dashboardIds = [
   'dashboard', 'connection-panel', 'connection-body', 'leak-panel', 'leak-body',
   'privacy-panel', 'privacy-body', 'advanced-details', 'active-tests',
-  'guided-test-disclosure', 'monitor-test-disclosure', 'aggressive-test-disclosure'
+  'guided-test-disclosure', 'aggressive-test-disclosure', 'monitor-test-disclosure', 'webrtc-test-disclosure'
 ];
 for (const id of dashboardIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Compact dashboard control is missing: ${id}`);
@@ -65,14 +70,31 @@ for (const id of dashboardIds) {
 const guidedIds = [
   'guided-section', 'guided-step', 'guided-instructions', 'guided-real', 'guided-vpn',
   'guided-primary', 'guided-secondary', 'guided-clear', 'guided-result', 'guided-exposures',
-  'guided-paths', 'guided-coverage', 'media-webrtc-button', 'media-webrtc-status', 'media-webrtc-result'
+  'guided-paths', 'guided-coverage'
 ];
 for (const id of guidedIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Guided leak control is missing: ${id}`);
 }
 
-for (const id of ['monitor-toggle', 'monitor-status', 'monitor-timeline', 'aggressive-toggle', 'aggressive-status', 'aggressive-progress', 'aggressive-summary', 'aggressive-exposures', 'aggressive-timeline']) {
+const activeTestIds = [
+  'guided-test-summary-status', 'guided-timer', 'guided-progress-bar',
+  'aggressive-test-summary-status', 'aggressive-toggle', 'aggressive-timer', 'aggressive-progress-bar',
+  'aggressive-result-panel', 'aggressive-status', 'aggressive-progress', 'aggressive-summary',
+  'aggressive-exposures', 'aggressive-timeline',
+  'monitor-test-summary-status', 'monitor-toggle', 'monitor-timer', 'monitor-result-panel',
+  'monitor-status', 'monitor-timeline',
+  'webrtc-test-summary-status', 'media-webrtc-baseline', 'media-webrtc-timer',
+  'media-webrtc-button', 'media-webrtc-status', 'media-webrtc-result'
+];
+for (const id of activeTestIds) {
   if (!html.includes(`id="${id}"`)) throw new Error(`Active test control is missing: ${id}`);
+}
+
+const orderedDisclosures = [
+  'guided-test-disclosure', 'aggressive-test-disclosure', 'monitor-test-disclosure', 'webrtc-test-disclosure'
+].map((id) => html.indexOf(`id="${id}"`));
+if (orderedDisclosures.some((index) => index < 0) || !orderedDisclosures.every((index, i) => i === 0 || index > orderedDisclosures[i - 1])) {
+  throw new Error('Active tests must remain ordered Guided, Aggressive, Kill Switch, WebRTC');
 }
 
 const moduleScripts = [...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*src=["']([^"']+)["'][^>]*>/gi)].map((match) => match[1]);
@@ -90,6 +112,15 @@ if (!/runIpConsensusProgressive/.test(appSource)) throw new Error('Core must use
 if (!/runGeoIpConsensusProgressive/.test(appSource)) throw new Error('Core must use progressive GeoIP consensus');
 if (!/buildConnectionView/.test(appSource) || !/renderConnection/.test(appSource)) throw new Error('Core must render the compact connection dashboard');
 if (/function\s+advancedCard\s*\(/.test(appSource) || !/function\s+advancedDisclosure\s*\(/.test(appSource)) throw new Error('Advanced diagnostics must use compact disclosure rows');
+if (!/createPresentationTicker/.test(appSource)) throw new Error('Active-test clocks must use the shared presentation ticker');
+if (!/renderIpProviderEvidence/.test(appSource) || !/const\s+ipEntries\s*=\s*\[currentReport\.ipv4,\s*currentReport\.ipv6\]/.test(appSource)) {
+  throw new Error('Advanced IPv4/IPv6 network rows must render already-collected provider evidence');
+}
+
+const providerRenderSource = await readFile(resolve(root, 'assets/provider-evidence-render.js'), 'utf8');
+if (/\bfetch\s*\(/.test(providerRenderSource) || /runIpConsensus/.test(providerRenderSource)) {
+  throw new Error('Provider evidence rendering must not launch additional public-IP requests');
+}
 
 const configSource = await readFile(resolve(root, 'assets/config.js'), 'utf8');
 if (!/id:\s*['"]ipapiis['"]/.test(configSource) || !/https:\/\/api\.ipapi\.is\/\?q=\{ip\}/.test(configSource)) {

@@ -24,13 +24,26 @@ The active GeoIP race currently uses `ipapi.co`, `ipwho.is`, `FreeIPAPI`, and `i
 
 A third-party outage does not erase data returned by other providers. If only one public-IP or GeoIP source works, its result remains visible with reduced source coverage. GeoIP databases can legitimately disagree about a mobile carrier gateway's city or region; that disagreement is metadata only and is never treated as VPN-leak evidence by itself.
 
+### Public-IP source agreement
+
+Core IPv4/IPv6 discovery keeps the result from every configured public-IP source. `agree` means all successful sources returned the selected address. `differ` means at least one other **successful** source returned a different valid public IP. A timeout, blocked request, malformed response, or wrong-family response is `Unavailable` and does **not** count as disagreement.
+
+The selected public IP is still produced by the existing consensus algorithm. Provider disagreement is diagnostic evidence only and does not independently become a VPN leak.
+
+Open **Advanced diagnostics → IPv4 network** or **IPv6 network** to inspect **Public IP sources**. That subsection shows the selected consensus IP, vote/agreement summary, number of different values, and every provider's returned address (or error), relation to the selected result (`agrees`, `differs`, `unavailable`) and request latency. This view reuses the already-collected core consensus data and performs no additional public-IP discovery request.
+
 ## Active tests
 
-The stronger interactive workflows are grouped under **Active tests** and remain collapsed while idle so they do not dominate the page:
+The stronger interactive workflows are grouped under **Active tests** and remain collapsed while idle so they do not dominate the page. Each row explains what it is for, keeps a live status visible while collapsed, and shows a prominent result panel when the run completes.
 
-- **Guided VPN Leak Test** — recommended three-step pre-VPN/VPN/stress workflow;
-- **Kill Switch test** — manual public-address monitoring during disconnect/reconnect;
-- **Aggressive Leak Test** — opt-in 60-second high-frequency test.
+The four tests answer different questions:
+
+- **Guided VPN Leak Test** — captures your pre-VPN public IP first, so an exact reappearance during the VPN-on stress phase can be identified as your **Known Real** address rather than merely an unexpected IP.
+- **Aggressive Leak Test** — watches several browser-visible paths for 60 seconds and catches transient unexpected public addresses without requiring a pre-VPN capture. It can prove that an unexpected public IP appeared, but not always that the address is specifically your home/mobile pre-VPN IP.
+- **Kill Switch test** — an open-ended public-IP monitor for a deliberate manual VPN disconnect/reconnect. Start it, reproduce the transition, then stop it.
+- **WebRTC Permission Check** — compares WebRTC/ICE visibility before and after camera/microphone permission. It is a separate specialized WebRTC privacy-path test, not another 60-second stress test. If Guided captures exist, it uses that profile as a baseline for stronger Known Real/Known VPN classification; otherwise it runs in Standalone mode.
+
+Guided and Aggressive show `Preparing baseline…` while their initial baseline work is still running, then display the countdown from the diagnostic engine's real 60-second observation deadline. The UI clock is presentation-only and does not schedule extra network probes. Kill Switch and WebRTC Permission Check show elapsed time because they do not have a fixed 60-second deadline.
 
 Opening or collapsing one of these UI disclosures does not start or stop the diagnostic. Test lifecycle remains controlled only by its explicit action buttons.
 
@@ -77,7 +90,9 @@ and WebRTC stress offsets:
 
 Repeated network events during the same active burst are coalesced instead of multiplying an entire second burst schedule.
 
-### WebRTC stress
+### WebRTC stress inside Guided
+
+The **60-second Guided stress phase itself** includes automatic STUN/WebRTC observations. These are part of Guided Step 3 and require no camera/microphone permission.
 
 The guided stress configuration currently uses four STUN destinations across three operator groups:
 
@@ -88,21 +103,24 @@ The guided stress configuration currently uses four STUN destinations across thr
 
 Destination failures are isolated. Successful WebRTC sessions remain usable if another destination fails. The report records the actual candidate protocol. It says TCP was observed only when a real ICE candidate reports `tcp`; configuring or attempting STUN does not itself prove TCP use.
 
-### Optional media-permission WebRTC test
+## WebRTC Permission Check
 
-The guided section also contains a separate **optional** media-permission WebRTC comparison. It never runs on page load, during core/advanced checks, or automatically during the 60-second stress test. The browser permission prompt can only be entered from the explicit media-test button.
+**WebRTC Permission Check** is a separate fourth row under **Active tests**. It never runs on page load, during core/advanced checks, or automatically during Guided/Aggressive stress. The browser permission prompt can only be entered from its explicit button.
 
 The test compares WebRTC visibility before and after `getUserMedia({ audio: true, video: true })`. The project does not record or upload audio/video. Any tracks returned by the browser are stopped immediately in a `finally` cleanup path, including when the post-permission WebRTC probe fails.
 
-A newly visible private/local candidate is privacy information only. A newly visible public candidate is classified against the same Guided profile; an exact Known Real address can therefore become real-leak evidence.
+Its relationship to Guided is explicit:
 
-The JSON produced by **Copy JSON** includes the `guidedLeak` report with captures, verdict, exposures, path matrix, coverage, reconnect-burst state, and optional media result.
+- **Baseline: Guided VPN Leak Test** — if Guided has already captured Known Real and/or Known VPN addresses in this tab, the permission check uses that existing profile to classify a newly visible public WebRTC address. An exact Known Real address can therefore become real-leak evidence, while Known VPN remains expected.
+- **Standalone mode** — if no Guided baseline is available, the check can still show that media permission exposed an additional public WebRTC address, but it cannot prove that the address is your known pre-VPN real IP. Run Guided first if that stronger attribution is needed.
+
+A newly visible private/local candidate is privacy information only. The media result remains stored under `guidedLeak.media` in **Copy JSON** for report compatibility even though its UI is now separate from the Guided wizard.
 
 ## Aggressive Leak Test
 
 The **Aggressive Leak Test** remains available as an unguided/manual high-frequency test focused on catching short-lived public-IP exposure while a VPN disconnects, reconnects, changes networks, or fails its Kill Switch.
 
-It never starts automatically. Press **Start 60s test** and reproduce the network transition during the 60-second observation window.
+It never starts automatically. Press **Start 60s test** and reproduce the network transition during the 60-second observation window. Initial baseline work is shown separately as `Preparing baseline…`; the visible countdown starts from the same `startedAt`/`endsAt` used by the test engine after baseline preparation finishes.
 
 During the explicit test the page repeatedly compares several independent browser-visible paths:
 
@@ -124,6 +142,16 @@ Browser timer gaps are measured. If a background tab is heavily throttled, the t
 
 Aggressive mode intentionally sends more requests to configured third-party services for 60 seconds. It remains opt-in, uses no analytics, and stores its timeline only in browser memory unless **Copy JSON** is used.
 
+## Kill Switch test
+
+The Kill Switch/IP-change monitor never starts automatically. Press **Start monitoring** while intentionally disconnecting/reconnecting the VPN or changing networks.
+
+While enabled it samples lightweight public-IP endpoints at a configurable interval (5 seconds by default), keeps a timeline in browser memory, and records actual successfully observed address changes. Temporary failed/unavailable samples are ignored instead of being reported as an IP change.
+
+The UI shows elapsed time while monitoring and freezes that duration when the test is stopped. A stopped run with usable samples and no observed address change is shown as `NO IP CHANGE OBSERVED`; a run with no usable public-IP samples is `MONITORING INCONCLUSIVE` rather than being called clean.
+
+After a real address transition, the new address is enriched asynchronously with the existing GeoIP and network-intelligence providers. This can label transitions such as `Possible ISP exposure`, `Network path changed`, or `Address changed within same network`. Enrichment explains an already-observed hard IP change; it never creates a leak event by itself.
+
 ## Advanced diagnostics
 
 Advanced checks are intentionally lazy. They run when **Advanced diagnostics** is opened and are cached for the current core run. **Run advanced again** explicitly retries them.
@@ -132,6 +160,7 @@ The default Advanced surface is a compact list. Each result expands only when te
 
 Advanced diagnostics include:
 
+- IPv4/IPv6 network details plus the already-collected **Public IP sources** consensus evidence for that family;
 - VPN / proxy / Tor / datacenter and related IP-database classifications;
 - ASN, organization, prefix, RIR, and network type where available;
 - reverse DNS (PTR) through independent public DNS-over-HTTPS resolvers;
@@ -146,14 +175,6 @@ Advanced diagnostics include:
 Canvas and audio digests are computed locally with Web Crypto and remain only in the in-memory report unless the user copies the JSON. They are not sent to the project or to analytics infrastructure.
 
 Reverse DNS is **not** a DNS leak test. Third-party VPN/proxy/Tor labels are database classifications and are not treated as proof of a leak. STUN port differences are NAT-behavior hints only. An unavailable Advanced service is a diagnostic-availability condition, not leak evidence.
-
-## Kill Switch test
-
-The Kill Switch/IP-change monitor never starts automatically. Press **Start monitoring** while intentionally disconnecting/reconnecting the VPN or changing networks.
-
-While enabled it samples lightweight public-IP endpoints at a configurable interval (5 seconds by default), keeps a timeline in browser memory, and records actual successfully observed address changes. Temporary failed/unavailable samples are ignored instead of being reported as an IP change.
-
-After a real address transition, the new address is enriched asynchronously with the existing GeoIP and network-intelligence providers. This can label transitions such as `Possible ISP exposure`, `Network path changed`, or `Address changed within same network`. Enrichment explains an already-observed hard IP change; it never creates a leak event by itself.
 
 ## IP and WebRTC classification
 
@@ -170,10 +191,11 @@ CGNAT, private IPv4, IPv6 ULA/link-local, or an mDNS hostname visible through We
 - an exact captured Known Real public address observed during the Guided VPN Leak Test;
 - a confirmed unexpected public address during the Guided test;
 - a public WebRTC/STUN address that differs from trusted HTTP public addresses in core diagnostics;
+- a Known Real public address exposed by the explicit WebRTC Permission Check when a Guided baseline exists;
 - a public-address change captured during an explicitly running Kill Switch test;
 - an unexpected public IPv4/global IPv6 observed by the unguided Aggressive Leak Test.
 
-TLS fingerprints, Canvas/WebGL/WebGPU/Audio exposure, STUN port variation, CGNAT/local-address exposure, GeoIP disagreement, timezone mismatch, and VPN/proxy/datacenter classification do not become leaks by themselves. Strong browser-environment contradictions may produce `Review` only.
+TLS fingerprints, Canvas/WebGL/WebGPU/Audio exposure, STUN port variation, CGNAT/local-address exposure, GeoIP disagreement, public-IP provider disagreement by itself, timezone mismatch, and VPN/proxy/datacenter classification do not become leaks by themselves. Strong browser-environment contradictions may produce `Review` only.
 
 ## Not available without a project-owned backend
 
@@ -206,11 +228,13 @@ The current GitHub Pages configuration may contact multiple third-party services
 
 Core GeoIP providers are contacted in parallel once an address is detected because the page prioritizes low visible latency. The first usable location may be shown before the other GeoIP requests finish; final consensus replaces the provisional display. These third-party services necessarily observe the queried public IP and requests sent to them and may apply their own logging/privacy policies. The project does not control those external logs.
 
-Opening Advanced sends one best-effort request to the configured TLS reflector. Canvas/audio hashes are not included in that request.
+Opening Advanced sends one best-effort request to the configured TLS reflector. Expanding **Public IP sources** only displays source results that core discovery already collected; it does not repeat the public-IP lookup. Canvas/audio hashes are not included in the TLS request.
 
 Guided and unguided 60-second stress modes repeatedly contact configured IP/STUN services and periodically contact configured echo/TLS endpoints. GeoIP/intelligence enrichment receives only public addresses that the page has already detected and is cached per address where applicable.
 
 Kill Switch monitoring repeatedly contacts lightweight IP endpoints only while the user has explicitly enabled monitoring; GeoIP/intelligence enrichment happens only after an actual public-address transition.
+
+WebRTC Permission Check contacts the configured STUN destinations before and after the explicit media-permission prompt. It reuses any Guided baseline already stored in this tab but does not automatically start Guided or a 60-second stress run.
 
 All external endpoints and timeouts are configured in `assets/config.js` so they can later be replaced with project-owned services.
 

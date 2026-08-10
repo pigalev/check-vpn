@@ -132,3 +132,16 @@ test('monitor ignores transient unavailable samples instead of inventing an IP c
   assert.equal(state.events.length, 0);
   assert.deepEqual(monitorFindings(state), []);
 });
+
+test('monitor tracks usable samples separately and freezes stop time', () => {
+  let state = createMonitorState();
+  assert.equal(state.successfulSampleCount, 0);
+  assert.equal(state.stoppedAt, null);
+  state = reduceMonitorState(state, { type: 'start', timestamp: '2026-08-10T12:00:00.000Z' });
+  state = reduceMonitorState(state, { type: 'sample', timestamp: '2026-08-10T12:00:05.000Z', sample: { ipv4: { status: 'complete', address: '203.0.113.2' }, ipv6: { status: 'unavailable', address: null } } });
+  assert.equal(state.successfulSampleCount, 1);
+  state = reduceMonitorState(state, { type: 'sample', timestamp: '2026-08-10T12:00:10.000Z', sample: { ipv4: { status: 'unavailable', address: null }, ipv6: { status: 'unavailable', address: null } } });
+  assert.equal(state.successfulSampleCount, 1);
+  state = reduceMonitorState(state, { type: 'stop', timestamp: '2026-08-10T12:00:15.000Z' });
+  assert.equal(state.stoppedAt, '2026-08-10T12:00:15.000Z');
+});

@@ -74,8 +74,15 @@
         </div>
 
         <details id="guided-test-disclosure" class="active-test-row">
-          <summary><span>Guided VPN Leak Test</span><span class="active-test-meta">Recommended</span></summary>
+          <summary>
+            <span class="active-test-summary-copy">
+              <span class="active-test-name">Guided VPN Leak Test</span>
+              <span class="active-test-purpose">Checks whether your known pre-VPN public IP appears again while the VPN is connected.</span>
+            </span>
+            <span id="guided-test-summary-status" class="active-test-meta">Step 1/3 · identify your real IP</span>
+          </summary>
           <section id="guided-section" class="monitor-shell guided-shell active-test-content" aria-labelledby="guided-heading">
+            <p class="test-explainer"><strong>What this test checks:</strong> Capture your public IP with VPN off, capture it again with VPN on, then run a 60-second stress test. An exact pre-VPN address seen during Step 3 is strong real-IP leak evidence.</p>
             <div class="guided-header">
               <div>
                 <p class="eyebrow">Known real IP test</p>
@@ -85,6 +92,8 @@
                 <p class="guided-privacy">Your pre-VPN public IP is intentionally checked against third-party diagnostic services. Saved for this tab only.</p>
               </div>
             </div>
+            <div id="guided-timer" class="test-timer" aria-live="polite"></div>
+            <div class="test-progress-track" aria-hidden="true"><div id="guided-progress-bar" class="test-progress-bar"></div></div>
             <div class="guided-connection-grid">
               <div id="guided-real" class="guided-connection-card"><strong>Real connection</strong><p class="card-detail">Not captured</p></div>
               <div id="guided-vpn" class="guided-connection-card"><strong>VPN connection</strong><p class="card-detail">Not captured</p></div>
@@ -94,7 +103,7 @@
               <button id="guided-secondary" class="secondary-button" type="button" hidden>Continue anyway</button>
               <button id="guided-clear" class="secondary-button" type="button">Clear captured IPs</button>
             </div>
-            <div id="guided-result" class="guided-result" aria-live="polite"></div>
+            <div id="guided-result" class="guided-result test-result-slot" aria-live="polite"></div>
             <div id="guided-exposures" class="guided-exposures"></div>
             <div id="guided-paths" class="guided-paths"></div>
             <div id="guided-coverage" class="guided-coverage"></div>

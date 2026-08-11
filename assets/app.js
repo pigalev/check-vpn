@@ -404,7 +404,7 @@ async function runCore() {
 
 function intelligenceRows(result) {
   if (result?.status !== 'complete') return [];
-  return [['ASN', result.asn], ['Organization', result.organization], ['Prefix', result.prefix], ['RIR', result.rir], ['Type', result.networkType], ['VPN', result.isVpn == null ? 'Unknown' : result.isVpn ? 'Detected' : 'No'], ['Proxy', result.isProxy == null ? 'Unknown' : result.isProxy ? 'Detected' : 'No'], ['Tor', result.isTor == null ? 'Unknown' : result.isTor ? 'Detected' : 'No'], ['Datacenter', result.isDatacenter == null ? 'Unknown' : result.isDatacenter ? 'Yes' : 'No'], ['Mobile', result.isMobile == null ? 'Unknown' : result.isMobile ? 'Yes' : 'No'], ['Abuse flag', result.isAbuser == null ? 'Unknown' : result.isAbuser ? 'Present' : 'No']];
+  return [['ASN', result.asn], ['Organization', result.organization], ['Prefix', result.prefix], ['RIR', result.rir], ['Type', result.networkType], ['VPN', result.isVpn == null ? 'Unknown' : result.isVpn ? 'Detected' : 'No'], ['Proxy', result.isProxy == null ? 'Unknown' : result.isProxy ? 'Detected' : 'No'], ['Tor', result.isTor == null ? 'Unknown' : result.isTor ? 'Detected' : 'No'], ['Datacenter', result.isDatacenter == null ? 'Unknown' : result.isDatacenter ? 'Detected' : 'No'], ['Mobile', result.isMobile == null ? 'Unknown' : result.isMobile ? 'Yes' : 'No'], ['Abuse flag', result.isAbuser == null ? 'Unknown' : result.isAbuser ? 'Present' : 'No']];
 }
 
 function renderStunResults(parent, stun) {

@@ -35,12 +35,31 @@ async function queryResolver({ resolver, name, timeoutMs, fetchImpl }) {
 export async function runReverseDns({ ip, resolvers, timeoutMs, fetchImpl = fetch }) {
   const name = toReverseDnsName(ip);
   const sources = await Promise.all(resolvers.map((resolver) => queryResolver({ resolver, name, timeoutMs, fetchImpl })));
-  const ok = sources.filter((s) => s.status === 'complete');
-  const names = [...new Set(ok.flatMap((s) => s.names))];
+  const reachedSources = sources.filter((source) => source.status === 'complete');
+  const recordSources = reachedSources.filter((source) => source.names.length > 0);
+  const names = [...new Set(recordSources.flatMap((source) => source.names))];
+  const distinctRecordSets = new Set(recordSources.map((source) => source.names.slice().sort().join('|')));
+
+  let state;
+  if (reachedSources.length === 0) state = 'unavailable';
+  else if (recordSources.length === 0) state = 'no-record';
+  else if (recordSources.length === 1) state = 'single-source';
+  else state = distinctRecordSets.size === 1 ? 'agree' : 'disagree';
+
   return {
-    status: ok.length ? 'complete' : 'unavailable', ip, names,
-    agreement: { available: ok.length, total: resolvers.length, agree: new Set(ok.map((s) => s.names.join('|'))).size <= 1 },
+    status: reachedSources.length ? 'complete' : 'unavailable',
+    ip,
+    names,
+    agreement: {
+      reached: reachedSources.length,
+      available: reachedSources.length,
+      total: resolvers.length,
+      recordsAvailable: recordSources.length,
+      recordSources: recordSources.length,
+      state,
+      agree: state === 'agree' ? true : state === 'disagree' ? false : null
+    },
     sources,
-    error: ok.length ? null : 'Reverse DNS unavailable'
+    error: reachedSources.length ? null : 'Reverse DNS unavailable'
   };
 }

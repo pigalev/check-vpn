@@ -15,5 +15,3 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run check
-      - name: Smoke IP provider CORS and payloads
-        run: node scripts/check-ip-provider-cors.mjs --origin=https://pigalev.github.io

@@ -10,6 +10,13 @@ function authoritativeAddress(result) {
   return ['strong', 'partial'].includes(result.confidence) ? result.address : null;
 }
 
+function geoCountryDisagrees(result) {
+  const agreement = result?.geo?.agreement;
+  if (!agreement) return false;
+  if (agreement.countryState) return agreement.countryState === 'disagree';
+  return agreement.countryAgree === false;
+}
+
 export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [], monitorFindings = [], aggressiveFindings = [], guidedFindings = [] }) {
   const findings = [ ...(privacy?.findings ?? []), ...networkFindings, ...monitorFindings, ...aggressiveFindings, ...guidedFindings ];
   const httpAddresses = new Set([authoritativeAddress(ipv4), authoritativeAddress(ipv6)].filter(Boolean));
@@ -31,7 +38,7 @@ export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [
     } else if (!result?.confidence && result?.agreement?.agree === false) {
       findings.push({ id: `ipv${result.family}-source-disagreement`, severity: 'review', category: 'ip', summary: `IPv${result.family} providers disagree`, details: 'Independent public-IP sources returned different addresses.', sources: ['http-ip'] });
     }
-    if (result?.geo?.agreement?.countryAgree === false) findings.push({ id: `ipv${result.family}-geo-country-disagreement`, severity: 'review', category: 'geoip', summary: `IPv${result.family} GeoIP country disagreement`, details: 'GeoIP providers returned different countries.', sources: ['geoip'] });
+    if (geoCountryDisagrees(result)) findings.push({ id: `ipv${result.family}-geo-country-disagreement`, severity: 'review', category: 'geoip', summary: `IPv${result.family} GeoIP country disagreement`, details: 'GeoIP providers returned different countries.', sources: ['geoip'] });
   }
 
   const unique = dedupe(findings);

@@ -32,8 +32,8 @@ function endpoint(id, kind, url) {
   return Object.freeze({ id, kind, url });
 }
 
-function group(id, groupName, label, family, tier, endpoints) {
-  return Object.freeze({ id, group: groupName, label, family, tier, endpoints: Object.freeze(endpoints) });
+function group(id, groupName, label, family, tier, endpoints, options = {}) {
+  return Object.freeze({ id, group: groupName, label, family, tier, endpoints: Object.freeze(endpoints), ...options });
 }
 
 const coreIpProviderGroups = {
@@ -45,7 +45,7 @@ const coreIpProviderGroups = {
     ]),
     group('seeip4', 'seeip', 'SeeIP', 4, 'primary', [endpoint('seeip4-http', 'json', 'https://ipv4.seeip.org/jsonip')]),
     group('icanhaz4', 'icanhazip', 'icanhazip', 4, 'primary', [endpoint('icanhaz4-http', 'text', 'https://ipv4.icanhazip.com/')]),
-    group('myip4', 'myip', 'MyIP', 4, 'primary', [endpoint('myip4-http', 'json', 'https://api4.my-ip.io/v2/ip.json')])
+    group('ipsb4', 'ipsb', 'IP.SB', 4, 'primary', [endpoint('ipsb4-http', 'text', 'https://api-ipv4.ip.sb/ip')])
   ]),
   6: Object.freeze([
     group('ipify6', 'ipify', 'ipify', 6, 'primary', [endpoint('ipify6-http', 'ipify', 'https://api6.ipify.org?format=json')]),
@@ -55,16 +55,22 @@ const coreIpProviderGroups = {
     ]),
     group('seeip6', 'seeip', 'SeeIP', 6, 'primary', [endpoint('seeip6-http', 'json', 'https://ipv6.seeip.org/jsonip')]),
     group('icanhaz6', 'icanhazip', 'icanhazip', 6, 'primary', [endpoint('icanhaz6-http', 'text', 'https://ipv6.icanhazip.com/')]),
-    group('myip6', 'myip', 'MyIP', 6, 'primary', [endpoint('myip6-http', 'json', 'https://api6.my-ip.io/v2/ip.json')])
+    group('ipsb6', 'ipsb', 'IP.SB', 6, 'primary', [endpoint('ipsb6-http', 'text', 'https://api-ipv6.ip.sb/ip')])
   ])
 };
 
 const reserveIpProviderGroups = {
   4: Object.freeze([
-    group('ippubblico4', 'ippubblico', 'IPPubblico', 4, 'reserve', [endpoint('ippubblico4-http', 'text', 'https://ipv4.ippubblico.org/')])
+    group('ippubblico4', 'ippubblico', 'IPPubblico', 4, 'reserve', [endpoint('ippubblico4-http', 'text', 'https://ipv4.ippubblico.org/')], {
+      enabled: false,
+      disabledReason: 'Browser CORS unavailable'
+    })
   ]),
   6: Object.freeze([
-    group('ippubblico6', 'ippubblico', 'IPPubblico', 6, 'reserve', [endpoint('ippubblico6-http', 'text', 'https://ipv6.ippubblico.org/')])
+    group('ippubblico6', 'ippubblico', 'IPPubblico', 6, 'reserve', [endpoint('ippubblico6-http', 'text', 'https://ipv6.ippubblico.org/')], {
+      enabled: false,
+      disabledReason: 'Browser CORS unavailable'
+    })
   ])
 };
 

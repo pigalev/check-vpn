@@ -18,8 +18,12 @@ function rowFor(source, selectedAddress, confidence) {
     tier: source?.tier ?? 'primary',
     address: source?.status === 'complete' ? source.address ?? null : null,
     relation,
-    latencyMs: Number.isFinite(source?.latencyMs) ? source.latencyMs : null,
-    error: relation === 'unavailable' ? source?.error ?? 'Request unavailable' : null,
+    latencyMs: relation === 'not-needed' ? null : Number.isFinite(source?.latencyMs) ? source.latencyMs : null,
+    error: relation === 'unavailable'
+      ? source?.error ?? 'Request unavailable'
+      : relation === 'not-needed'
+        ? source?.error ?? 'Consensus already guaranteed'
+        : null,
     endpointId: source?.endpointId ?? null,
     attempts: (source?.attempts ?? []).map((attempt) => ({ ...attempt }))
   };
@@ -34,7 +38,7 @@ export function buildIpProviderEvidence(result = {}) {
   const confidence = result.confidence ?? (selectedAddress ? 'legacy' : 'unavailable');
   const successfulRows = successfulSources(result);
   const successful = result.agreement?.available ?? successfulRows.length;
-  const total = result.agreement?.total ?? (result.sources?.filter((source) => source?.status !== 'not-needed').length ?? 0);
+  const total = result.agreement?.total ?? (result.sources?.filter((source) => !['not-needed','disabled'].includes(source?.status)).length ?? 0);
   const counts = result.agreement?.counts ?? {};
   const selectedVotes = result.agreement?.selectedVotes ?? (selectedAddress ? (counts[selectedAddress] ?? successfulRows.filter((source) => source.address === selectedAddress).length) : 0);
   const differentValues = selectedAddress

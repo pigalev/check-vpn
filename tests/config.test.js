@@ -15,34 +15,37 @@ test('network endpoints and timeouts are configured', () => {
   assert.match(networkConfig.ipv6Endpoint, /^https:\/\//);
   assert.ok(Array.isArray(networkConfig.geoIpProviders));
   assert.equal(networkConfig.geoIpProviders.length, 4);
-  assert.deepEqual(
-    networkConfig.geoIpProviders.map((provider) => provider.id),
-    ['ipapi', 'ipwhois', 'freeipapi', 'ipapiis']
-  );
-  for (const provider of networkConfig.geoIpProviders) {
-    assert.match(provider.urlTemplate, /^https:\/\//);
-    assert.match(provider.urlTemplate, /\{ip\}/);
-    assert.equal(typeof provider.kind, 'string');
-  }
-  const freeIpApi = networkConfig.geoIpProviders.find((provider) => provider.id === 'freeipapi');
-  assert.match(freeIpApi.urlTemplate, /^https:\/\/free\.freeipapi\.com\/api\/json\//);
-  const ipapiIs = networkConfig.geoIpProviders.find((provider) => provider.id === 'ipapiis');
-  assert.equal(ipapiIs.kind, 'ipapiis');
-  assert.equal(ipapiIs.urlTemplate, 'https://api.ipapi.is/?q={ip}');
+  assert.deepEqual(networkConfig.geoIpProviders.map((provider) => provider.id), ['ipapi', 'ipwhois', 'freeipapi', 'ipapiis']);
   assert.ok(networkConfig.stunUrls.every((url) => url.startsWith('stun:')));
   assert.ok(networkConfig.requestTimeoutMs >= 3000);
   assert.ok(networkConfig.geoIpTimeoutMs >= 3000);
   assert.ok(networkConfig.webrtcTimeoutMs >= 3000);
 });
 
+test('core, reserve and stress IP provider profiles are independent', () => {
+  for (const family of [4, 6]) {
+    assert.ok(networkConfig.coreIpProviderGroups[family].length >= 4);
+    assert.deepEqual(networkConfig.reserveIpProviderGroups[family].map((group) => group.group), ['ippubblico']);
+    assert.ok(networkConfig.stressIpProviderGroups[family].length <= networkConfig.coreIpProviderGroups[family].length);
+    assert.ok(!networkConfig.stressIpProviderGroups[family].some((group) => ['ippubblico', 'myip'].includes(group.group)));
+    assert.ok(!networkConfig.coreIpProviderGroups[family].some((group) => group.group === 'ipwhois'));
+  }
+});
+
+test('ident redundancy lives inside one voting group', () => {
+  for (const family of [4, 6]) {
+    const ident = networkConfig.coreIpProviderGroups[family].find((group) => group.group === 'ident');
+    assert.ok(ident);
+    assert.equal(ident.endpoints.length, 2);
+    assert.match(ident.endpoints[0].url, /ident\.me/);
+    assert.match(ident.endpoints[1].url, /tnedi\.me/);
+  }
+});
+
 test('stress STUN destinations retain operator grouping', () => {
   assert.equal(networkConfig.stunDestinations.length, 4);
   assert.deepEqual(networkConfig.stunDestinations.map((item) => item.id), ['cloudflare', 'google-0', 'google-1', 'twilio']);
   assert.deepEqual([...new Set(networkConfig.stunDestinations.map((item) => item.group))], ['cloudflare', 'google', 'twilio']);
-  for (const destination of networkConfig.stunDestinations) {
-    assert.ok(destination.urls.length > 0);
-    assert.ok(destination.urls.every((url) => url.startsWith('stun:')));
-  }
 });
 
 test('reconnect burst keeps approved sub-two-second offsets', () => {

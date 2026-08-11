@@ -11,6 +11,7 @@ const required = [
   'assets/network.js',
   'assets/ip-classification.js',
   'assets/ip-tests.js',
+  'assets/ip-provider-group.js',
   'assets/ip-consensus.js',
   'assets/geoip.js',
   'assets/country.js',
@@ -106,15 +107,26 @@ for (const forbidden of ['Backend required', 'Coming soon', 'DNS leak test', 'To
 
 const guidedProfileSource = await readFile(resolve(root, 'assets/guided-leak-profile.js'), 'utf8');
 if (/\blocalStorage\b/.test(guidedProfileSource)) throw new Error('Guided leak profile must not use localStorage');
+
 const appSource = await readFile(resolve(root, 'assets/app.js'), 'utf8');
+const guidedRuntimeSource = await readFile(resolve(root, 'assets/guided-app-runtime.js'), 'utf8');
 if (!/storage:\s*window\.sessionStorage/.test(appSource)) throw new Error('Guided leak profile must be wired to current-tab sessionStorage');
 if (!/runIpConsensusProgressive/.test(appSource)) throw new Error('Core must use progressive public-IP consensus');
 if (!/runGeoIpConsensusProgressive/.test(appSource)) throw new Error('Core must use progressive GeoIP consensus');
 if (!/buildConnectionView/.test(appSource) || !/renderConnection/.test(appSource)) throw new Error('Core must render the compact connection dashboard');
 if (/function\s+advancedCard\s*\(/.test(appSource) || !/function\s+advancedDisclosure\s*\(/.test(appSource)) throw new Error('Advanced diagnostics must use compact disclosure rows');
 if (!/createPresentationTicker/.test(appSource)) throw new Error('Active-test clocks must use the shared presentation ticker');
-if (!/renderIpProviderEvidence/.test(appSource) || !/const\s+ipEntries\s*=\s*\[currentReport\.ipv4,\s*currentReport\.ipv6\]/.test(appSource)) {
+if (!/renderIpProviderEvidence/.test(appSource) || !/const\s+familyEntries\s*=\s*\[currentReport\.ipv4,\s*currentReport\.ipv6\]/.test(appSource)) {
   throw new Error('Advanced IPv4/IPv6 network rows must render already-collected provider evidence');
+}
+if (/networkConfig\.ipProviders/.test(appSource) || /networkConfig\.ipProviders/.test(guidedRuntimeSource)) {
+  throw new Error('Runtime must not use the legacy flat IP provider list');
+}
+if (!/coreIpProviderGroups/.test(appSource) || !/reserveIpProviderGroups/.test(appSource) || !/stressIpProviderGroups/.test(appSource)) {
+  throw new Error('Core, reserve and repeated-test IP provider profiles must remain separate');
+}
+if (!/coreIpProviderGroups/.test(guidedRuntimeSource)) {
+  throw new Error('Guided capture must use broad Core IP provider groups');
 }
 
 const providerRenderSource = await readFile(resolve(root, 'assets/provider-evidence-render.js'), 'utf8');
@@ -123,6 +135,15 @@ if (/\bfetch\s*\(/.test(providerRenderSource) || /runIpConsensus/.test(providerR
 }
 
 const configSource = await readFile(resolve(root, 'assets/config.js'), 'utf8');
+for (const name of ['coreIpProviderGroups', 'reserveIpProviderGroups', 'stressIpProviderGroups']) {
+  if (!configSource.includes(name)) throw new Error(`Missing IP provider profile: ${name}`);
+}
+if (!/group\(['"]ippubblico4['"],\s*['"]ippubblico['"].*['"]reserve['"]/.test(configSource) || !/group\(['"]ippubblico6['"],\s*['"]ippubblico['"].*['"]reserve['"]/.test(configSource)) {
+  throw new Error('IPPubblico must remain configured as reserve-only for both address families');
+}
+if (!/id:\s*['"]ipwhois['"]/.test(configSource) || !/https:\/\/ipwho\.is\/\{ip\}/.test(configSource)) {
+  throw new Error('ipwho.is must remain configured for GeoIP metadata');
+}
 if (!/id:\s*['"]ipapiis['"]/.test(configSource) || !/https:\/\/api\.ipapi\.is\/\?q=\{ip\}/.test(configSource)) {
   throw new Error('RU-friendly ipapi.is GeoIP provider must remain configured');
 }

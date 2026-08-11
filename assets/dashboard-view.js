@@ -2,19 +2,50 @@ function usableGeo(geo) {
   return geo && ['complete', 'partial'].includes(geo.status);
 }
 
+function reserveUnavailable(ip) {
+  return Boolean(ip?.reserve?.used) && (ip.reserve.sources ?? []).every((source) => source?.status !== 'complete');
+}
+
 function sourceText(ip) {
   if (!ip?.agreement) return ip?.address ? 'Checking…' : null;
-  return `${ip.agreement.available}/${ip.agreement.total} sources${ip.agreement.agree ? ' · agree' : ' · differ'}`;
+  const confidence = ip.confidence;
+  const available = ip.agreement.available ?? 0;
+  const selectedVotes = ip.agreement.selectedVotes ?? (ip.address ? (ip.agreement.counts?.[ip.address] ?? available) : 0);
+  const primaryAvailable = ip.primary?.available ?? available;
+  const primaryTotal = ip.primary?.total ?? ip.agreement.total ?? 0;
+
+  if (confidence === 'strong') {
+    return ip.reserve?.used
+      ? `Strong consensus · reserve used · ${selectedVotes}/${available} agree`
+      : `Strong consensus · ${primaryAvailable}/${primaryTotal} primary responded · ${selectedVotes} agree`;
+  }
+  if (confidence === 'partial') {
+    return `Partial · ${selectedVotes || available} sources agree${reserveUnavailable(ip) ? ' · reserve unavailable' : ''}`;
+  }
+  if (confidence === 'no-consensus') return 'No consensus · review source details';
+  if (confidence === 'unavailable') return 'Unavailable · no source confirmed this family';
+  return `${available}/${ip.agreement.total ?? 0} sources${ip.agreement.agree ? ' · agree' : ' · differ'}`;
+}
+
+function authoritativeAddress(ip) {
+  if (!ip?.address) return null;
+  if (!ip.confidence) return ip.address;
+  return ['strong', 'partial'].includes(ip.confidence) ? ip.address : null;
 }
 
 function ipEntry(ip, fallbackFamily) {
   const family = ip?.family ?? fallbackFamily;
   if (!ip?.address) {
+    let state;
+    if (ip?.ipFinal === false) state = 'checking';
+    else if (ip?.confidence === 'no-consensus') state = 'no-consensus';
+    else if (ip?.confidence === 'unavailable') state = 'unavailable';
+    else state = 'not-detected';
     return {
       family,
       address: null,
-      state: ip?.ipFinal ? 'not-detected' : 'checking',
-      sourceText: null,
+      state,
+      sourceText: sourceText(ip),
       locationState: 'none',
       location: null,
       network: null
@@ -47,13 +78,20 @@ export function buildConnectionView({ ipv4, ipv6, assessment = null }) {
 }
 
 export function buildLeakView({ ipv4, ipv6, webrtc }) {
-  const trusted = new Set([ipv4?.address, ipv6?.address].filter(Boolean));
+  const trusted = new Set([authoritativeAddress(ipv4), authoritativeAddress(ipv6)].filter(Boolean));
   const publicAddresses = [...new Set(webrtc?.publicAddresses ?? [])];
-  const mismatchAddresses = publicAddresses.filter((address) => !trusted.has(address));
+  const mismatchAddresses = trusted.size ? publicAddresses.filter((address) => !trusted.has(address)) : [];
   const candidates = webrtc?.candidates ?? [];
   const mdnsProtection = candidates.some((candidate) => candidate.classification === 'mdns');
+  const status = webrtc?.status !== 'complete'
+    ? 'unavailable'
+    : !trusted.size && publicAddresses.length
+      ? 'unavailable'
+      : mismatchAddresses.length
+        ? 'leak'
+        : 'clear';
   return {
-    status: webrtc?.status === 'complete' ? (mismatchAddresses.length ? 'leak' : 'clear') : 'unavailable',
+    status,
     publicMismatch: mismatchAddresses.length > 0,
     mismatchAddresses,
     publicAddresses,

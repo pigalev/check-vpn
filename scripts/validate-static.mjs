@@ -12,6 +12,7 @@ const required = [
   'assets/ip-classification.js',
   'assets/ip-tests.js',
   'assets/ip-provider-group.js',
+  'assets/ip-consensus-race.js',
   'assets/ip-consensus.js',
   'assets/geoip.js',
   'assets/country.js',
@@ -128,15 +129,30 @@ if (!/coreIpProviderGroups/.test(appSource) || !/reserveIpProviderGroups/.test(a
 if (!/coreIpProviderGroups/.test(guidedRuntimeSource)) {
   throw new Error('Guided capture must use broad Core IP provider groups');
 }
+if (!/timeoutMs:\s*networkConfig\.coreIpTimeoutMs/.test(appSource)) {
+  throw new Error('Default Core public-IP race must use coreIpTimeoutMs');
+}
+if (!/function\s+runStressIpConsensus\(family\)[\s\S]*?stressIpProviderGroups\[family\][\s\S]*?timeoutMs:\s*networkConfig\.requestTimeoutMs/.test(appSource)) {
+  throw new Error('Repeated stress sampling must keep its small provider profile and request timeout');
+}
+if (!/buildCountryFlagPresentation/.test(appSource) || !/Location unavailable/.test(appSource) || !/GeoIP providers disagree/.test(appSource)) {
+  throw new Error('Connection UI must preserve location state and resilient country flag rendering');
+}
 
 const providerRenderSource = await readFile(resolve(root, 'assets/provider-evidence-render.js'), 'utf8');
 if (/\bfetch\s*\(/.test(providerRenderSource) || /runIpConsensus/.test(providerRenderSource)) {
   throw new Error('Provider evidence rendering must not launch additional public-IP requests');
 }
+if (!/Consensus already guaranteed/.test(providerRenderSource)) {
+  throw new Error('Provider evidence must explain early not-needed sources');
+}
 
 const configSource = await readFile(resolve(root, 'assets/config.js'), 'utf8');
-for (const name of ['coreIpProviderGroups', 'reserveIpProviderGroups', 'stressIpProviderGroups']) {
-  if (!configSource.includes(name)) throw new Error(`Missing IP provider profile: ${name}`);
+for (const name of ['coreIpProviderGroups', 'reserveIpProviderGroups', 'stressIpProviderGroups', 'coreIpTimeoutMs', 'ipProviderHedgeDelayMs']) {
+  if (!configSource.includes(name)) throw new Error(`Missing fast Core configuration: ${name}`);
+}
+if (!/coreIpTimeoutMs:\s*3200/.test(configSource) || !/ipProviderHedgeDelayMs:\s*IP_PROVIDER_HEDGE_DELAY_MS/.test(configSource) || !/IP_PROVIDER_HEDGE_DELAY_MS\s*=\s*900/.test(configSource)) {
+  throw new Error('Fast Core timing must remain 3200 ms with a 900 ms ident hedge');
 }
 if (!/group\(['"]ipsb4['"],\s*['"]ipsb['"].*api-ipv4\.ip\.sb\/ip/.test(configSource) || !/group\(['"]ipsb6['"],\s*['"]ipsb['"].*api-ipv6\.ip\.sb\/ip/.test(configSource)) {
   throw new Error('IP.SB must remain the fifth Core provider group with dedicated family endpoints');
@@ -144,14 +160,23 @@ if (!/group\(['"]ipsb4['"],\s*['"]ipsb['"].*api-ipv4\.ip\.sb\/ip/.test(configSou
 if (/['"]myip['"]/.test(configSource) || /my-ip\.io/.test(configSource)) {
   throw new Error('Failed MyIP candidate must not remain active in production config');
 }
-if (!/group\(['"]ippubblico4['"],\s*['"]ippubblico['"].*['"]reserve['"][\s\S]*?enabled:\s*false[\s\S]*?CORS/.test(configSource) || !/group\(['"]ippubblico6['"],\s*['"]ippubblico['"].*['"]reserve['"][\s\S]*?enabled:\s*false[\s\S]*?CORS/.test(configSource)) {
-  throw new Error('IPPubblico must remain configured but disabled as a CORS-blocked reserve candidate');
+if (!/group\(['"]ippubblico4['"],\s*['"]ippubblico['"].*['"]reserve['"].*ipv4\.ippubblico\.org/.test(configSource) || !/group\(['"]ippubblico6['"],\s*['"]ippubblico['"].*['"]reserve['"].*ipv6\.ippubblico\.org/.test(configSource)) {
+  throw new Error('IPPubblico must remain configured as a live reserve-tier Core source');
+}
+if (/group\(['"]ippubblico[46]['"][\s\S]{0,300}?enabled:\s*false/.test(configSource)) {
+  throw new Error('IPPubblico must not be globally quarantined; the user browser must be allowed to try it');
 }
 if (!/id:\s*['"]ipwhois['"]/.test(configSource) || !/https:\/\/ipwho\.is\/\{ip\}/.test(configSource)) {
   throw new Error('ipwho.is must remain configured for GeoIP metadata');
 }
 if (!/id:\s*['"]ipapiis['"]/.test(configSource) || !/https:\/\/api\.ipapi\.is\/\?q=\{ip\}/.test(configSource)) {
-  throw new Error('RU-friendly ipapi.is GeoIP provider must remain configured');
+  throw new Error('ipapi.is GeoIP provider must remain configured');
+}
+if (!/id:\s*['"]sypex-ru['"][\s\S]*?kind:\s*['"]sypex['"][\s\S]*?families:\s*Object\.freeze\(\[4\]\)[\s\S]*?https:\/\/ru\.sxgeo\.city\/json\/\{ip\}/.test(configSource)) {
+  throw new Error('Activated Sypex RU provider must remain IPv4-only GeoIP');
+}
+if (/jsonp|no-cors|api[_-]?key\s*[:=]\s*['"][^'"]+/i.test(configSource)) {
+  throw new Error('Production provider config must not use JSONP, no-cors or embedded API secrets');
 }
 
 const importPattern = /from\s+['"](\.\/.+?)['"]/g;

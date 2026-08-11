@@ -18,9 +18,11 @@ test('stress profile is not widened by Core speed work', () => {
   }
 });
 
-test('IPPubblico remains a reserve-tier group, not a stress source', () => {
+test('IPPubblico is a live reserve-tier Core source, never a stress source', () => {
   for (const family of [4,6]) {
-    assert.equal(networkConfig.reserveIpProviderGroups[family].find((group) => group.group === 'ippubblico')?.tier, 'reserve');
+    const source = networkConfig.reserveIpProviderGroups[family].find((group) => group.group === 'ippubblico');
+    assert.equal(source?.tier, 'reserve');
+    assert.notEqual(source?.enabled, false);
     assert.ok(!networkConfig.stressIpProviderGroups[family].some((group) => group.group === 'ippubblico'));
   }
 });

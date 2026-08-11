@@ -1,8 +1,13 @@
 import { fetchJsonWithTimeout } from './network.js';
 import { buildCountryAliases, countryEvidenceKey } from './geoip-country.js';
+import { summarizeFieldVotes } from './geoip-votes.js';
 
 function cleanString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function normalizedKey(value) {
+  return cleanString(value)?.toLowerCase() ?? null;
 }
 
 function normalizeAsn(value) {
@@ -146,6 +151,7 @@ export async function runGeoIpProviderLookup({
   }
 }
 
+// ASN/organization are descriptive only and do not affect verdicts, so their legacy plurality is retained.
 function voteValue(results, field) {
   const votes = new Map();
   for (const result of results) {
@@ -163,16 +169,6 @@ function voteValue(results, field) {
   return winner?.value ?? null;
 }
 
-function evidenceState(values) {
-  const normalized = values
-    .filter(Boolean)
-    .map((value) => String(value).trim().toLowerCase())
-    .filter(Boolean);
-  if (normalized.length === 0) return 'unavailable';
-  if (normalized.length === 1) return 'single-source';
-  return new Set(normalized).size === 1 ? 'agree' : 'disagree';
-}
-
 function legacyAgree(state) {
   return state === 'agree' ? true : state === 'disagree' ? false : null;
 }
@@ -182,6 +178,10 @@ function locationTuple(result) {
   return [result.city ?? '', result.region ?? '']
     .map((value) => String(value).trim().toLowerCase())
     .join('|');
+}
+
+function locationLabel(result) {
+  return [cleanString(result.city), cleanString(result.region)].filter(Boolean).join(', ') || null;
 }
 
 function metadataTuple(result) {
@@ -195,12 +195,33 @@ function metadataTuple(result) {
   ].map((value) => String(value).trim().toLowerCase()).join('|');
 }
 
-function agreementFor(successful, total) {
+function agreementState(voteState) {
+  if (voteState === 'agree') return 'agree';
+  if (voteState === 'single-source') return 'single-source';
+  if (voteState === 'unavailable') return 'unavailable';
+  return 'disagree';
+}
+
+function buildFieldVotes(successful) {
   const aliases = buildCountryAliases(successful);
-  const countries = successful.map((result) => countryEvidenceKey(result, aliases)).filter(Boolean);
-  const locations = successful.map(locationTuple).filter(Boolean);
-  const countryState = evidenceState(countries);
-  const locationState = evidenceState(locations);
+  const country = summarizeFieldVotes(successful, {
+    keyOf: (result) => countryEvidenceKey(result, aliases),
+    labelOf: (result) => cleanString(result.country) ?? cleanString(result.countryCode) ?? 'Unknown'
+  });
+  const location = summarizeFieldVotes(successful, {
+    keyOf: locationTuple,
+    labelOf: locationLabel
+  });
+  const timezone = summarizeFieldVotes(successful, {
+    keyOf: (result) => normalizedKey(result.timezone),
+    labelOf: (result) => cleanString(result.timezone) ?? 'Unknown'
+  });
+  return { country, location, timezone, aliases };
+}
+
+function agreementFor(successful, total, votes) {
+  const countryState = agreementState(votes.country.state);
+  const locationState = agreementState(votes.location.state);
   return {
     available: successful.length,
     total,
@@ -211,11 +232,22 @@ function agreementFor(successful, total) {
   };
 }
 
+function representativeFor(successful, vote, keyOf) {
+  if (!vote?.winnerKey) return null;
+  return successful.find((result) => keyOf(result) === vote.winnerKey) ?? null;
+}
+
 function buildGeoIpConsensusResult(ip, providers, sources) {
   const successful = sources.filter((result) => result.status === 'complete');
   const available = successful.length;
   const total = providers.length;
-  const agreement = agreementFor(successful, total);
+  const fieldVotes = buildFieldVotes(successful);
+  const votes = {
+    country: fieldVotes.country,
+    location: fieldVotes.location,
+    timezone: fieldVotes.timezone
+  };
+  const agreement = agreementFor(successful, total, votes);
 
   if (available === 0) {
     return {
@@ -228,12 +260,21 @@ function buildGeoIpConsensusResult(ip, providers, sources) {
       asn: null,
       org: null,
       timezone: null,
+      votes,
       agreement,
       sources,
       differences: [],
       error: 'Location unavailable.'
     };
   }
+
+  const countrySource = representativeFor(
+    successful,
+    votes.country,
+    (result) => countryEvidenceKey(result, fieldVotes.aliases)
+  );
+  const locationSource = representativeFor(successful, votes.location, locationTuple);
+  const timezoneSource = representativeFor(successful, votes.timezone, (result) => normalizedKey(result.timezone));
 
   const metadata = successful.map(metadataTuple);
   const metadataAgree = new Set(metadata).size <= 1;
@@ -253,13 +294,14 @@ function buildGeoIpConsensusResult(ip, providers, sources) {
   return {
     status: available === total ? 'complete' : 'partial',
     ip,
-    countryCode: voteValue(successful, 'countryCode'),
-    country: voteValue(successful, 'country'),
-    region: voteValue(successful, 'region'),
-    city: voteValue(successful, 'city'),
+    countryCode: countrySource?.countryCode ?? null,
+    country: countrySource?.country ?? null,
+    region: locationSource?.region ?? null,
+    city: locationSource?.city ?? null,
     asn: voteValue(successful, 'asn'),
     org: voteValue(successful, 'org'),
-    timezone: voteValue(successful, 'timezone'),
+    timezone: timezoneSource?.timezone ?? null,
+    votes,
     agreement,
     sources,
     differences,

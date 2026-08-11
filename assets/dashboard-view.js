@@ -1,3 +1,5 @@
+import { reason, reasonForGeoState } from './diagnostic-reasons.js';
+
 function usableGeo(geo) {
   return geo
     && ['complete', 'partial'].includes(geo.status)
@@ -35,13 +37,28 @@ function authoritativeAddress(ip) {
   return ['strong', 'partial'].includes(ip.confidence) ? ip.address : null;
 }
 
-function geoDisagrees(geo) {
-  const agreement = geo?.agreement;
-  if (!agreement) return false;
-  if (agreement.countryState || agreement.locationState) {
-    return agreement.countryState === 'disagree' || agreement.locationState === 'disagree';
+function distinct(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function geoNoticeFor(ip, family, geo) {
+  if (ip?.geoPending) return null;
+  if (!geo) {
+    if (ip?.geoFinal === true || ip?.geo?.status === 'unavailable') return reason('GEO_UNAVAILABLE', { family });
+    return null;
   }
-  return agreement.countryAgree === false || agreement.locationAgree === false;
+  const agreement = geo.agreement;
+  if (!agreement?.countryState && !agreement?.locationState) return null;
+  const successful = (geo.sources ?? []).filter((source) => source?.status === 'complete');
+  const countries = distinct(successful.map((source) => source.country ?? source.countryCode));
+  const locations = distinct(successful.map((source) => [source.city, source.region].filter(Boolean).join(', ')));
+  return reasonForGeoState({
+    family,
+    countryState:agreement.countryState ?? null,
+    locationState:agreement.locationState ?? null,
+    countries,
+    locations
+  })[0] ?? null;
 }
 
 function ipEntry(ip, fallbackFamily) {
@@ -58,7 +75,7 @@ function ipEntry(ip, fallbackFamily) {
       state,
       sourceText: sourceText(ip),
       locationState: 'none',
-      locationDisagreement: false,
+      geoNotice: null,
       location: null,
       network: null
     };
@@ -71,7 +88,7 @@ function ipEntry(ip, fallbackFamily) {
     state: ip.ipFinal === false ? 'detected' : 'complete',
     sourceText: sourceText(ip),
     locationState: geo ? 'available' : ip.geoPending ? 'locating' : 'unavailable',
-    locationDisagreement: geo ? geoDisagrees(geo) : false,
+    geoNotice: geoNoticeFor(ip, family, geo),
     location: geo ? {
       countryCode: geo.countryCode,
       country: geo.country,

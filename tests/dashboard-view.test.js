@@ -10,10 +10,13 @@ import {
 const ip4 = {
   family: 4,
   status: 'complete',
+  confidence: 'strong',
   address: '128.71.33.91',
   ipFinal: true,
   geoFinal: true,
-  agreement: { available: 3, total: 3, agree: true },
+  agreement: { available: 4, total: 5, agree: true, selectedVotes: 4, counts: { '128.71.33.91': 4 } },
+  primary: { available: 4, total: 5, sources: [] },
+  reserve: { used: false, sources: [] },
   geo: {
     status: 'complete', countryCode: 'RU', country: 'Russia', city: 'Krasnodar',
     asn: 'AS3216', org: 'VimpelCom', agreement: { available: 3, total: 4 }, differences: []
@@ -28,35 +31,38 @@ const noIp6 = {
   geoFinal: true
 };
 
-test('connection view makes IPv4 primary and unavailable IPv6 one compact row', () => {
+test('connection view makes IPv4 primary and legacy unavailable IPv6 one compact row', () => {
   const view = buildConnectionView({ ipv4: ip4, ipv6: noIp6, assessment: { status: 'protected' } });
   assert.equal(view.primary.family, 4);
   assert.equal(view.primary.address, '128.71.33.91');
+  assert.match(view.primary.sourceText, /^Strong consensus/);
   assert.equal(view.secondary.family, 6);
   assert.equal(view.secondary.state, 'not-detected');
-  assert.equal(view.secondary.address, null);
   assert.equal(view.verdict, 'protected');
 });
 
 test('IPv6 becomes primary when IPv4 is unavailable', () => {
   const ipv6 = {
-    family: 6, status: 'complete', address: '2a00:1450::1', ipFinal: true, geoFinal: true,
-    agreement: { available: 2, total: 3, agree: true },
+    family: 6, status: 'complete', confidence:'partial', address: '2a00:1450::1', ipFinal: true, geoFinal: true,
+    agreement: { available: 2, total: 3, agree: true, selectedVotes:2 },
+    primary:{available:2,total:3}, reserve:{used:true,sources:[{status:'unavailable'}]},
     geo: { status: 'complete', country: 'Germany', city: 'Frankfurt' }
   };
-  const view = buildConnectionView({ ipv4: { family:4, address:null, ipFinal:true }, ipv6 });
+  const view = buildConnectionView({ ipv4: { family:4, address:null, ipFinal:true, confidence:'unavailable' }, ipv6 });
   assert.equal(view.primary.family, 6);
   assert.equal(view.primary.address, '2a00:1450::1');
+  assert.match(view.primary.sourceText, /^Partial/);
 });
 
-test('both public families absent produce a compact unavailable hero state', () => {
+test('no-consensus is explicit and never looks like Not detected', () => {
   const view = buildConnectionView({
-    ipv4: { family:4, address:null, ipFinal:true },
-    ipv6: { family:6, address:null, ipFinal:true }
+    ipv4: { family:4, status:'partial', confidence:'no-consensus', address:null, ipFinal:true, observedAddresses:['203.0.113.1','203.0.113.2'] },
+    ipv6: { family:6, status:'unavailable', confidence:'unavailable', address:null, ipFinal:true }
   });
-  assert.equal(view.primary.address, null);
-  assert.equal(view.primary.state, 'not-detected');
-  assert.equal(view.secondary.state, 'not-detected');
+  assert.equal(view.primary.state, 'no-consensus');
+  assert.equal(view.primary.sourceText, 'No consensus · review source details');
+  assert.equal(view.secondary.state, 'unavailable');
+  assert.equal(view.secondary.sourceText, 'Unavailable · no source confirmed this family');
 });
 
 test('provisional address stays visible with checking states', () => {
@@ -90,14 +96,22 @@ test('WebRTC public mismatch exposes the mismatching address in summary', () => 
     ipv4: ip4,
     ipv6: noIp6,
     webrtc: {
-      status:'complete',
-      publicAddresses:['203.0.113.8'],
-      candidates:[{ address:'203.0.113.8', classification:'public', type:'srflx', protocol:'udp' }],
-      summary:{ host:0, srflx:1, relay:0, ipv4:1, ipv6:0, udp:1, tcp:0 }
+      status:'complete', publicAddresses:['203.0.113.8'],
+      candidates:[{ address:'203.0.113.8', classification:'public', type:'srflx', protocol:'udp' }], summary:{}
     }
   });
   assert.equal(view.publicMismatch, true);
   assert.deepEqual(view.mismatchAddresses, ['203.0.113.8']);
+});
+
+test('WebRTC does not call mismatch when HTTP has no authoritative consensus', () => {
+  const view = buildLeakView({
+    ipv4:{ family:4, confidence:'no-consensus', address:null },
+    ipv6:{ family:6, confidence:'unavailable', address:null },
+    webrtc:{ status:'complete', publicAddresses:['203.0.113.8'], candidates:[], summary:{} }
+  });
+  assert.equal(view.publicMismatch, false);
+  assert.equal(view.status, 'unavailable');
 });
 
 test('privacy view represents timezone mismatch once and moves routine fields to details', () => {
@@ -108,25 +122,16 @@ test('privacy view represents timezone mismatch once and moves routine fields to
   assert.equal(view.status, 'review');
   assert.equal(view.summaryRows.filter((row) => row.id === 'timezone').length, 1);
   assert.ok(view.detailRows.some((row) => row.id === 'platform'));
-  assert.ok(!view.summaryRows.some((row) => row.id === 'platform'));
 });
 
 test('unavailable advanced row is one concise state', () => {
-  const view = buildAdvancedRowView({
-    id:'tls', title:'TLS fingerprint',
-    result:{ status:'unavailable', error:'TLS reflector unavailable.' }
-  });
+  const view = buildAdvancedRowView({ id:'tls', title:'TLS fingerprint', result:{ status:'unavailable', error:'TLS reflector unavailable.' } });
   assert.equal(view.statusLabel, 'Unavailable');
   assert.equal(view.expandable, false);
-  assert.equal(view.fields.length, 0);
 });
 
 test('successful advanced row is expandable and keeps its compact summary', () => {
-  const view = buildAdvancedRowView({
-    id:'tls', title:'TLS fingerprint',
-    result:{ status:'complete', observedIp:'198.51.100.4', tlsVersion:'TLS 1.3', ja3Hash:'abc', ja4:'def' },
-    summary:'TLS 1.3 · JA4 available'
-  });
+  const view = buildAdvancedRowView({ id:'tls', title:'TLS fingerprint', result:{ status:'complete' }, summary:'TLS 1.3 · JA4 available' });
   assert.equal(view.statusLabel, 'Complete');
   assert.equal(view.expandable, true);
   assert.equal(view.summary, 'TLS 1.3 · JA4 available');

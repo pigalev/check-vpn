@@ -57,7 +57,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-test('5-0 primary is strong and reserve is not called', async () => {
+test('matching groups may finish Strong before every configured source settles', async () => {
   const calls = [];
   const result = await runIpConsensus({
     family: 4,
@@ -68,27 +68,26 @@ test('5-0 primary is strong and reserve is not called', async () => {
   });
   assert.equal(result.confidence, 'strong');
   assert.equal(result.address, '203.0.113.1');
-  assert.equal(result.agreement.selectedVotes, 5);
-  assert.equal(result.reserve.used, false);
-  assert.ok(!calls.some((url) => url.includes('reserve.test')));
-  assert.equal(result.reserve.sources[0].status, 'not-needed');
+  assert.ok(result.agreement.selectedVotes >= 4);
+  assert.ok(result.sources.some((source) => source.status === 'not-needed'));
+  assert.ok(calls.length >= 4);
 });
 
-test('4-1 primary is strong and reserve is not called', async () => {
+test('4 matching responses can lock Strong before a later conflicting source settles', async () => {
   const result = await runIpConsensus({
     family: 4,
     primaryGroups: ['a','b','c','d','e'].map((id) => group(id)),
     reserveGroups: [group('reserve', 'reserve')],
     timeoutMs: 100,
-    fetchImpl: fixtureFetch({ a:'203.0.113.1', b:'203.0.113.1', c:'203.0.113.1', d:'203.0.113.1', e:'203.0.113.2' })
+    fetchImpl: fixtureFetch({ a:'203.0.113.1', b:'203.0.113.1', c:'203.0.113.1', d:'203.0.113.1', e:'203.0.113.2', reserve:'203.0.113.2' })
   });
   assert.equal(result.confidence, 'strong');
-  assert.equal(result.agreement.selectedVotes, 4);
-  assert.equal(result.agreement.winningShare, 0.8);
-  assert.equal(result.reserve.used, false);
+  assert.equal(result.address, '203.0.113.1');
+  assert.ok(result.agreement.selectedVotes >= 4);
+  assert.ok(result.agreement.winningShare >= (2 / 3));
 });
 
-test('3-2 primary calls reserve and reserve can strengthen it to 4-2', async () => {
+test('3-2 primary plus reserve can strengthen it to 4-2', async () => {
   const calls = [];
   const result = await runIpConsensus({
     family: 4,
@@ -105,19 +104,20 @@ test('3-2 primary calls reserve and reserve can strengthen it to 4-2', async () 
   assert.equal(result.agreement.winningShare, 4 / 6);
 });
 
-test('2-1 with three successful groups is strong without reserve', async () => {
+test('2-1 with exactly three successful groups is Strong under two-thirds rule', async () => {
   const result = await runIpConsensus({
     family: 4,
     primaryGroups: ['a','b','c'].map((id) => group(id)),
-    reserveGroups: [group('reserve', 'reserve')],
+    reserveGroups: [],
     timeoutMs: 100,
-    fetchImpl: fixtureFetch({ a:'203.0.113.1', b:'203.0.113.1', c:'203.0.113.2', reserve:'203.0.113.2' })
+    fetchImpl: fixtureFetch({ a:'203.0.113.1', b:'203.0.113.1', c:'203.0.113.2' })
   });
   assert.equal(result.confidence, 'strong');
-  assert.equal(result.reserve.used, false);
+  assert.equal(result.address, '203.0.113.1');
+  assert.equal(result.agreement.winningShare, 2 / 3);
 });
 
-test('two agreeing primary groups call reserve and remain partial if reserve fails', async () => {
+test('two agreeing primary groups plus failed reserve remain partial', async () => {
   const result = await runIpConsensus({
     family: 4,
     primaryGroups: ['a','b','c'].map((id) => group(id)),
@@ -131,7 +131,7 @@ test('two agreeing primary groups call reserve and remain partial if reserve fai
   assert.equal(result.agreement.available, 2);
 });
 
-test('2-2 primary plus one agreeing reserve is still no-consensus under two-thirds rule', async () => {
+test('2-2 plus one agreeing reserve is still no-consensus under two-thirds rule', async () => {
   const result = await runIpConsensus({
     family: 4,
     primaryGroups: ['a','b','c','d'].map((id) => group(id)),
@@ -201,7 +201,7 @@ test('ident primary failure and mirror success casts exactly one group vote', as
   assert.equal(result.sources.filter((source) => source.group === 'ident').length, 1);
 });
 
-test('disabled reserve is never fetched and never inflates agreement totals', async () => {
+test('disabled reserve is never fetched, never used, and never inflates agreement totals', async () => {
   const calls = [];
   const disabled = { ...group('reserve', 'reserve'), enabled:false, disabledReason:'Browser CORS unavailable' };
   const result = await runIpConsensus({
@@ -214,7 +214,7 @@ test('disabled reserve is never fetched and never inflates agreement totals', as
   assert.equal(result.confidence, 'partial');
   assert.equal(result.agreement.available, 2);
   assert.equal(result.agreement.total, 2);
-  assert.equal(result.reserve.used, true);
+  assert.equal(result.reserve.used, false);
   assert.equal(result.reserve.sources[0].status, 'disabled');
   assert.match(result.reserve.sources[0].error, /CORS/i);
   assert.ok(!calls.some((url) => url.includes('reserve.test')));
@@ -240,13 +240,13 @@ test('4 equal of 6 finishes before two pending groups settle and marks them not-
 });
 
 test('3 equal of 5 does not early finish while two groups are pending', async () => {
+  const d = deferred();
   const e = deferred();
-  const f = deferred();
   const fetchImpl = async (url) => {
     const host = new URL(url).hostname.split('.')[0];
     if (['a','b','c'].includes(host)) return text('31.76.17.233');
-    if (host === 'd') return e.promise;
-    if (host === 'e') return f.promise;
+    if (host === 'd') return d.promise;
+    if (host === 'e') return e.promise;
     throw new TypeError('offline');
   };
   const run = runIpConsensusProgressive({
@@ -256,8 +256,8 @@ test('3 equal of 5 does not early finish while two groups are pending', async ()
   });
   const early = await Promise.race([run, sleep(40).then(() => 'still-pending')]);
   assert.equal(early, 'still-pending');
+  d.resolve(text('203.0.113.8'));
   e.resolve(text('203.0.113.8'));
-  f.resolve(text('203.0.113.8'));
   const final = await run;
   assert.equal(final.confidence, 'no-consensus');
   assert.equal(final.address, null);

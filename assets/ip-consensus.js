@@ -30,24 +30,32 @@ function evaluateGroupVotes(sources) {
   return { successful, counts, ranked, winner, selectedVotes, winningShare, allAgree, strong, partial };
 }
 
-function notNeededSource(group, family) {
+function sourceShell(group, family, status, error = null) {
   return {
     id: group.id,
     group: group.group ?? group.id,
     label: group.label ?? group.id,
     family,
-    tier: 'reserve',
-    status: 'not-needed',
+    tier: group.tier ?? 'reserve',
+    status,
     address: null,
     latencyMs: 0,
     endpointId: null,
     attempts: [],
-    error: null
+    error
   };
 }
 
-function buildFinalResult({ family, primaryGroups, primarySources, reserveGroups, reserveSources, reserveUsed }) {
-  const attemptedReserve = reserveSources.filter((source) => source.status !== 'not-needed');
+function notNeededSource(group, family) {
+  return sourceShell(group, family, 'not-needed');
+}
+
+function disabledSource(group, family) {
+  return sourceShell(group, family, 'disabled', group.disabledReason ?? 'Provider disabled');
+}
+
+function buildFinalResult({ family, primaryGroups, primarySources, reserveSources, reserveUsed }) {
+  const attemptedReserve = reserveSources.filter((source) => !['not-needed', 'disabled'].includes(source.status));
   const attemptedSources = [...primarySources, ...attemptedReserve];
   const vote = evaluateGroupVotes(attemptedSources);
   let confidence;
@@ -153,6 +161,7 @@ export async function runIpConsensusProgressive({
   } else {
     reserveUsed = reserveGroups.length > 0;
     reserveSources = await Promise.all(reserveGroups.map(async (group) => {
+      if (group.enabled === false) return disabledSource(group, family);
       const source = await runIpProviderGroup({ group, family, timeoutMs, fetchImpl });
       if (!emitted && source.status === 'complete') {
         emitted = true;
@@ -166,7 +175,6 @@ export async function runIpConsensusProgressive({
     family,
     primaryGroups: normalizedPrimary,
     primarySources,
-    reserveGroups,
     reserveSources,
     reserveUsed
   });

@@ -9,7 +9,7 @@ function baseResult(overrides = {}) {
     address:'128.71.33.91',
     agreement:{ available:5,total:5,agree:false,counts:{'128.71.33.91':4,'128.71.35.12':1},selectedVotes:4,winningShare:0.8 },
     primary:{ available:5,total:5,sources:[] },
-    reserve:{ used:false,sources:[{id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,latencyMs:0,error:'Consensus already guaranteed',attempts:[]}] },
+    reserve:{ attempted:false,contributed:false,notNeeded:true,used:false,sources:[{id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,latencyMs:0,error:'Consensus already guaranteed',attempts:[]}] },
     sources:[],
     ...overrides
   };
@@ -31,27 +31,41 @@ test('strong majority reports one differing group without counting it unavailabl
   assert.match(view.summary, /Strong consensus/);
 });
 
-test('early-aborted group is not-needed with an explicit reason and no fake latency', () => {
+test('early-aborted reserve is explicitly not needed with no fake latency', () => {
   const reserve = {id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,latencyMs:0,error:'Consensus already guaranteed',attempts:[]};
-  const view = buildIpProviderEvidence(baseResult({ reserve:{used:false,sources:[reserve]}, sources:[reserve] }));
+  const view = buildIpProviderEvidence(baseResult({ reserve:{attempted:false,contributed:false,notNeeded:true,used:false,sources:[reserve]}, sources:[reserve] }));
   const row = view.reserve.rows[0];
-  assert.equal(view.reserve.used, false);
+  assert.equal(view.reserve.notNeeded, true);
+  assert.equal(view.reserve.attempted, false);
+  assert.equal(view.reserve.contributed, false);
   assert.equal(row.relation, 'not-needed');
   assert.equal(row.error, 'Consensus already guaranteed');
   assert.equal(row.latencyMs, null);
-  assert.equal(view.successful, 5);
-  assert.equal(view.total, 5);
+  assert.match(view.summary, /reserve not needed/i);
 });
 
-test('reserve used shows its address and relation', () => {
+test('successful reserve is described as contributed', () => {
   const reserve = {id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'complete',address:'128.71.33.91',latencyMs:440,attempts:[]};
   const view = buildIpProviderEvidence(baseResult({
     agreement:{ available:6,total:6,agree:false,counts:{'128.71.33.91':4,'128.71.35.12':2},selectedVotes:4,winningShare:4/6 },
-    reserve:{used:true,sources:[reserve]}, sources:[reserve]
+    reserve:{attempted:true,contributed:true,notNeeded:false,used:true,sources:[reserve]}, sources:[reserve]
   }));
-  assert.equal(view.reserve.used, true);
+  assert.equal(view.reserve.attempted, true);
+  assert.equal(view.reserve.contributed, true);
   assert.equal(view.reserve.rows[0].relation, 'agrees');
-  assert.match(view.summary, /reserve used/i);
+  assert.match(view.summary, /reserve contributed/i);
+  assert.doesNotMatch(view.summary, /reserve used/i);
+});
+
+test('failed reserve says attempted, never used or contributed', () => {
+  const reserve = {id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'unavailable',address:null,latencyMs:3201,error:'Load failed',attempts:[]};
+  const view = buildIpProviderEvidence(baseResult({
+    confidence:'partial',
+    agreement:{available:2,total:3,agree:true,counts:{'128.71.33.91':2},selectedVotes:2,winningShare:1},
+    reserve:{attempted:true,contributed:false,notNeeded:false,used:true,sources:[reserve]}, sources:[reserve]
+  }));
+  assert.match(view.summary, /reserve attempted/i);
+  assert.doesNotMatch(view.summary, /reserve used|reserve contributed/i);
 });
 
 test('ident fallback preserves primary failure and mirror success attempts', () => {
@@ -75,7 +89,7 @@ test('no-consensus has no selected address and successful rows are observed, not
   const result = baseResult({
     confidence:'no-consensus', address:null,
     agreement:{available:2,total:2,agree:false,counts:{'203.0.113.1':1,'203.0.113.2':1},selectedVotes:1,winningShare:0.5},
-    primary:{available:2,total:2,sources:primary}, reserve:{used:false,sources:[]}, sources:primary
+    primary:{available:2,total:2,sources:primary}, reserve:{attempted:false,contributed:false,notNeeded:false,used:false,sources:[]}, sources:primary
   });
   const view = buildIpProviderEvidence(result);
   assert.equal(view.selectedAddress, null);

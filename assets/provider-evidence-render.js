@@ -24,7 +24,9 @@ function renderAttempts(parent, attempts = []) {
     add(row, 'span', attempt.endpointId ?? 'endpoint', 'provider-attempt-name');
     const value = attempt.status === 'complete'
       ? `${attempt.address ?? 'success'} · success`
-      : `${attempt.error ?? 'Unavailable'} · unavailable`;
+      : attempt.status === 'not-needed'
+        ? `${attempt.error ?? 'Not needed'} · not needed`
+        : `${attempt.error ?? 'Unavailable'} · unavailable`;
     add(row, 'span', value, 'provider-attempt-value');
     list.append(row);
   }
@@ -45,7 +47,7 @@ function renderSourceRows(parent, title, rows) {
     row.className = `provider-source-row provider-source-${source.relation}`;
     add(row, 'span', source.label, 'provider-source-name');
     const value = source.relation === 'not-needed'
-      ? 'Not needed'
+      ? source.error ?? 'Consensus already guaranteed'
       : source.address ?? source.error ?? 'Unavailable';
     add(row, 'span', value, 'provider-source-address');
     add(row, 'span', relationLabel(source.relation), 'provider-source-relation');

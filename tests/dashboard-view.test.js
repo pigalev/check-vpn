@@ -30,6 +30,7 @@ test('connection view makes IPv4 primary and legacy unavailable IPv6 one compact
   assert.equal(view.primary.family, 4);
   assert.equal(view.primary.address, '128.71.33.91');
   assert.match(view.primary.sourceText, /^Strong consensus/);
+  assert.equal(view.primary.geoNotice, null);
   assert.equal(view.secondary.family, 6);
   assert.equal(view.secondary.state, 'not-detected');
   assert.equal(view.verdict, 'protected');
@@ -63,29 +64,71 @@ test('provisional address stays visible with checking states', () => {
   assert.equal(view.primary.state, 'detected');
   assert.equal(view.primary.sourceText, 'Checking…');
   assert.equal(view.primary.locationState, 'locating');
+  assert.equal(view.primary.geoNotice, null);
 });
 
-test('usable GeoIP remains visible when country evidence disagrees', () => {
+test('country disagreement is an explicit Review notice', () => {
   const disputed = {
     ...ip4,
     geo:{
       status:'partial', countryCode:'RU', country:'Russia', city:'Moscow', region:'Moscow',
-      agreement:{available:3,total:5,countryState:'disagree',locationState:'disagree',countryAgree:false,locationAgree:false}
+      agreement:{available:3,total:5,countryState:'disagree',locationState:'disagree'},
+      sources:[
+        {status:'complete',countryCode:'RU',country:'Russia',city:'Moscow',region:'Moscow'},
+        {status:'complete',countryCode:'DE',country:'Germany',city:'Frankfurt',region:'Hesse'}
+      ]
     }
   };
   const view = buildConnectionView({ ipv4:disputed, ipv6:noIp6 });
   assert.equal(view.primary.locationState, 'available');
-  assert.equal(view.primary.locationDisagreement, true);
   assert.equal(view.primary.location.countryCode, 'RU');
-  assert.equal(view.primary.location.country, 'Russia');
+  assert.equal(view.primary.geoNotice.code, 'GEO_COUNTRY_DISAGREEMENT');
+  assert.equal(view.primary.geoNotice.severity, 'review');
+  assert.equal(view.primary.geoNotice.summary, 'IPv4 GeoIP country disagreement');
+});
+
+test('location-only disagreement is informational and specific', () => {
+  const disputed = {
+    ...ip4,
+    geo:{
+      ...ip4.geo,
+      region:'Hesse', city:'Frankfurt',
+      agreement:{available:3,total:3,countryState:'agree',locationState:'disagree'},
+      sources:[
+        {status:'complete',countryCode:'DE',country:'Germany',city:'Frankfurt',region:'Hesse'},
+        {status:'complete',countryCode:'DE',country:'Germany',city:'Neu-Isenburg',region:'Hesse'}
+      ]
+    }
+  };
+  const view = buildConnectionView({ ipv4:disputed, ipv6:noIp6, assessment:{status:'protected'} });
+  assert.equal(view.primary.geoNotice.code, 'GEO_LOCATION_DISAGREEMENT');
+  assert.equal(view.primary.geoNotice.severity, 'info');
+  assert.equal(view.primary.geoNotice.summary, 'IPv4 GeoIP location differs between providers');
+  assert.equal(view.verdict, 'protected');
+});
+
+test('single-source GeoIP is explicit informational evidence', () => {
+  const single = {
+    ...ip4,
+    geo:{
+      ...ip4.geo,
+      agreement:{available:1,total:4,countryState:'single-source',locationState:'single-source'},
+      sources:[{status:'complete',countryCode:'RU',country:'Russia',city:'Krasnodar'}]
+    }
+  };
+  const view = buildConnectionView({ ipv4:single, ipv6:noIp6 });
+  assert.equal(view.primary.geoNotice.code, 'GEO_COUNTRY_SINGLE_SOURCE');
+  assert.equal(view.primary.geoNotice.severity, 'info');
+  assert.match(view.primary.geoNotice.summary, /one provider/i);
 });
 
 test('GeoIP unavailable is explicit instead of silently missing', () => {
-  const unavailableGeo = { ...ip4, geo:{status:'unavailable',countryCode:null,country:null,city:null,region:null,agreement:{countryState:'unavailable'}} };
+  const unavailableGeo = { ...ip4, geo:{status:'unavailable',countryCode:null,country:null,city:null,region:null,agreement:{countryState:'unavailable',locationState:'unavailable'}}, geoPending:false, geoFinal:true };
   const view = buildConnectionView({ ipv4:unavailableGeo, ipv6:noIp6 });
   assert.equal(view.primary.locationState, 'unavailable');
   assert.equal(view.primary.location, null);
-  assert.equal(view.primary.locationDisagreement, false);
+  assert.equal(view.primary.geoNotice.code, 'GEO_UNAVAILABLE');
+  assert.equal(view.primary.geoNotice.severity, 'info');
 });
 
 test('healthy WebRTC creates compact no-mismatch leak view', () => {
@@ -114,6 +157,7 @@ test('privacy view represents timezone mismatch once and moves routine fields to
   const view = buildPrivacyView({ browser:{timezone:'Europe/Moscow',languages:['en-US','en','ru'],platform:'Win32',secureContext:true,gpc:null,doNotTrack:null}, privacy:{ipTimezones:['Europe/Berlin'],timezoneMatch:false} });
   assert.equal(view.status, 'review');
   assert.equal(view.summaryRows.filter((row) => row.id === 'timezone').length, 1);
+  assert.equal(view.summaryRows.find((row) => row.id === 'timezone')?.value, 'Europe/Moscow ↔ Europe/Berlin · Mismatch');
   assert.ok(view.detailRows.some((row) => row.id === 'platform'));
 });
 

@@ -1,4 +1,5 @@
 import { fetchJsonWithTimeout } from './network.js';
+import { buildCountryAliases, countryEvidenceKey } from './geoip-country.js';
 
 function cleanString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -176,10 +177,6 @@ function legacyAgree(state) {
   return state === 'agree' ? true : state === 'disagree' ? false : null;
 }
 
-function countryValue(result) {
-  return result.countryCode ?? result.country ?? null;
-}
-
 function locationTuple(result) {
   if (!result.city && !result.region) return null;
   return [result.city ?? '', result.region ?? '']
@@ -199,7 +196,8 @@ function metadataTuple(result) {
 }
 
 function agreementFor(successful, total) {
-  const countries = successful.map(countryValue).filter(Boolean);
+  const aliases = buildCountryAliases(successful);
+  const countries = successful.map((result) => countryEvidenceKey(result, aliases)).filter(Boolean);
   const locations = successful.map(locationTuple).filter(Boolean);
   const countryState = evidenceState(countries);
   const locationState = evidenceState(locations);

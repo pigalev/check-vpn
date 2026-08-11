@@ -138,8 +138,14 @@ const configSource = await readFile(resolve(root, 'assets/config.js'), 'utf8');
 for (const name of ['coreIpProviderGroups', 'reserveIpProviderGroups', 'stressIpProviderGroups']) {
   if (!configSource.includes(name)) throw new Error(`Missing IP provider profile: ${name}`);
 }
-if (!/group\(['"]ippubblico4['"],\s*['"]ippubblico['"].*['"]reserve['"]/.test(configSource) || !/group\(['"]ippubblico6['"],\s*['"]ippubblico['"].*['"]reserve['"]/.test(configSource)) {
-  throw new Error('IPPubblico must remain configured as reserve-only for both address families');
+if (!/group\(['"]ipsb4['"],\s*['"]ipsb['"].*api-ipv4\.ip\.sb\/ip/.test(configSource) || !/group\(['"]ipsb6['"],\s*['"]ipsb['"].*api-ipv6\.ip\.sb\/ip/.test(configSource)) {
+  throw new Error('IP.SB must remain the fifth Core provider group with dedicated family endpoints');
+}
+if (/['"]myip['"]/.test(configSource) || /my-ip\.io/.test(configSource)) {
+  throw new Error('Failed MyIP candidate must not remain active in production config');
+}
+if (!/group\(['"]ippubblico4['"],\s*['"]ippubblico['"].*['"]reserve['"][\s\S]*?enabled:\s*false[\s\S]*?CORS/.test(configSource) || !/group\(['"]ippubblico6['"],\s*['"]ippubblico['"].*['"]reserve['"][\s\S]*?enabled:\s*false[\s\S]*?CORS/.test(configSource)) {
+  throw new Error('IPPubblico must remain configured but disabled as a CORS-blocked reserve candidate');
 }
 if (!/id:\s*['"]ipwhois['"]/.test(configSource) || !/https:\/\/ipwho\.is\/\{ip\}/.test(configSource)) {
   throw new Error('ipwho.is must remain configured for GeoIP metadata');

@@ -133,6 +133,19 @@ function locationNode(geo) {
   wrapper.append(value); return wrapper;
 }
 
+function authoritativeIpAddress(result) {
+  if (!result?.address) return null;
+  if (!result.confidence) return result.address;
+  return ['strong', 'partial'].includes(result.confidence) ? result.address : null;
+}
+
+function connectionRowValue(entry) {
+  if (entry.address) return entry.sourceText ?? 'Checking…';
+  if (entry.state === 'checking') return 'Checking…';
+  if (['no-consensus', 'unavailable'].includes(entry.state)) return entry.sourceText ?? 'Unavailable';
+  return 'Not detected';
+}
+
 function renderConnection(ipv4, ipv6, assessment = currentReport?.assessment ?? null) {
   const view = buildConnectionView({ ipv4, ipv6, assessment });
   connectionBody.replaceChildren();
@@ -140,7 +153,12 @@ function renderConnection(ipv4, ipv6, assessment = currentReport?.assessment ?? 
   const primaryIp = primary.family === 4 ? ipv4 : ipv6;
 
   if (!primary.address) {
-    text(connectionBody, primary.state === 'checking' ? 'Checking public IP…' : 'Public IP unavailable', 'connection-primary-empty');
+    const message = primary.state === 'checking'
+      ? 'Checking public IP…'
+      : primary.state === 'no-consensus'
+        ? 'Public IP consensus unavailable'
+        : 'Public IP unavailable';
+    text(connectionBody, message, 'connection-primary-empty');
   } else {
     text(connectionBody, primary.address, 'connection-address');
     if (primary.locationState === 'available') {
@@ -149,15 +167,9 @@ function renderConnection(ipv4, ipv6, assessment = currentReport?.assessment ?? 
     if (primary.network) text(connectionBody, primary.network, 'connection-meta');
   }
 
-  const compact = [{
-    label: `IPv${primary.family}`,
-    value: primary.address ? primary.sourceText ?? 'Checking…' : primary.state === 'checking' ? 'Checking…' : 'Not detected'
-  }];
+  const compact = [{ label: `IPv${primary.family}`, value: connectionRowValue(primary) }];
   const secondary = view.secondary;
-  compact.push({
-    label: `IPv${secondary.family}`,
-    value: secondary.address ? secondary.address : secondary.state === 'checking' ? 'Checking…' : 'Not detected'
-  });
+  compact.push({ label: `IPv${secondary.family}`, value: connectionRowValue(secondary) });
   summaryRows(connectionBody, compact);
 
   if (secondary.address) {
@@ -184,7 +196,7 @@ function renderLeakChecks(result, ipv4, ipv6) {
     text(leakBody, 'Public WebRTC address differs from HTTP public IP.', 'inline-danger');
   } else {
     summaryRows(leakBody, [
-      { label: 'WebRTC public IP', value: view.publicAddresses.length ? 'No mismatch' : 'Not exposed' },
+      { label: 'WebRTC public IP', value: view.publicAddresses.length && view.status !== 'unavailable' ? 'No mismatch' : view.publicAddresses.length ? 'Observed · HTTP consensus unavailable' : 'Not exposed' },
       { label: 'Local address privacy', value: view.mdnsProtection ? 'mDNS protected' : 'Review details' }
     ]);
   }
@@ -194,7 +206,7 @@ function renderLeakChecks(result, ipv4, ipv6) {
   const body = document.createElement('div'); body.className = 'panel-details-body';
   if (result?.error) text(body, result.error);
   const summary = result?.summary ?? {};
-  const trusted = new Set([ipv4?.address, ipv6?.address].filter(Boolean));
+  const trusted = new Set([authoritativeIpAddress(ipv4), authoritativeIpAddress(ipv6)].filter(Boolean));
   const privacy = summarizeWebRtcPrivacy(result?.candidates ?? [], trusted);
   rows(body, [
     ['Public', result?.publicAddresses?.join(', ') || 'Not detected'],
@@ -206,7 +218,7 @@ function renderLeakChecks(result, ipv4, ipv6) {
     ['CGNAT candidate', privacy.cgnatExposed ? 'Exposed' : 'Not detected'],
     ['Private/ULA IPv6', privacy.privateIpv6Exposed ? 'Exposed' : 'Not detected'],
     ['mDNS protection', privacy.mdnsProtection ? 'Active' : 'Not observed'],
-    ['Public mismatch', privacy.publicMismatches.length ? privacy.publicMismatches.join(', ') : 'No']
+    ['Public mismatch', trusted.size ? (privacy.publicMismatches.length ? privacy.publicMismatches.join(', ') : 'No') : 'Not evaluated without HTTP consensus']
   ]);
   const list = document.createElement('div'); list.className = 'candidate-list';
   for (const candidate of result?.candidates ?? []) {
@@ -323,8 +335,20 @@ async function runCore() {
     void locate(source.address, family);
   }
 
-  const ipv4Promise = runIpConsensusProgressive({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs, onFirstValid: (source) => handleFirstIp(4, source) });
-  const ipv6Promise = runIpConsensusProgressive({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs, onFirstValid: (source) => handleFirstIp(6, source) });
+  const ipv4Promise = runIpConsensusProgressive({
+    family: 4,
+    primaryGroups: networkConfig.coreIpProviderGroups[4],
+    reserveGroups: networkConfig.reserveIpProviderGroups[4],
+    timeoutMs: networkConfig.requestTimeoutMs,
+    onFirstValid: (source) => handleFirstIp(4, source)
+  });
+  const ipv6Promise = runIpConsensusProgressive({
+    family: 6,
+    primaryGroups: networkConfig.coreIpProviderGroups[6],
+    reserveGroups: networkConfig.reserveIpProviderGroups[6],
+    timeoutMs: networkConfig.requestTimeoutMs,
+    onFirstValid: (source) => handleFirstIp(6, source)
+  });
   const webrtcPromise = runWebRtcTest({ stunUrls: networkConfig.stunUrls, timeoutMs: networkConfig.webrtcTimeoutMs }).then((result) => {
     if (currentRunId === expectedRunId) renderLeakChecks(result, liveIp[4], liveIp[6]);
     return result;
@@ -393,8 +417,9 @@ async function runAdvanced(force = false) {
   if (!currentReport || (!force && advancedRunId === currentRunId)) return;
   advancedRunId = currentRunId; advancedButton.disabled = true; advancedResults.replaceChildren();
   const loading = document.createElement('p'); loading.className = 'advanced-loading'; loading.textContent = 'Running best-effort checks…'; advancedResults.append(loading);
-  const ipEntries = [currentReport.ipv4, currentReport.ipv6].filter((result) => result?.address);
-  const ips = ipEntries.map((result) => result.address);
+  const familyEntries = [currentReport.ipv4, currentReport.ipv6].filter((result) => result && (result.address || (result.sources?.length ?? 0)));
+  const authoritativeEntries = familyEntries.filter((result) => authoritativeIpAddress(result));
+  const ips = authoritativeEntries.map((result) => result.address);
   const [intelligence, reverseDns, stun, httpInspection, tlsFingerprint, fingerprintExposure] = await Promise.all([
     Promise.all(ips.map((ip) => runNetworkIntelligence({ ip, endpointTemplate: networkConfig.intelligenceUrlTemplate, timeoutMs: networkConfig.advancedTimeoutMs }))),
     Promise.all(ips.map((ip) => runReverseDns({ ip, resolvers: networkConfig.dohResolvers, timeoutMs: networkConfig.advancedTimeoutMs }))),
@@ -403,16 +428,31 @@ async function runAdvanced(force = false) {
     safe(() => runTlsFingerprint({ endpoint: networkConfig.tlsReflectorEndpoint, timeoutMs: networkConfig.fingerprintTimeoutMs }), { status: 'unavailable', error: 'TLS reflector unavailable.' }),
     safe(() => collectFingerprintExposure(window, { timeoutMs: networkConfig.fingerprintTimeoutMs }), { status: 'unavailable', canvas: { status: 'unavailable' }, webgl: { status: 'unavailable' }, webgpu: { status: 'unavailable' }, audio: { status: 'unavailable' }, findings: [] })
   ]);
+  const intelligenceByAddress = new Map(ips.map((ip, index) => [ip, intelligence[index]]));
+  const reverseDnsByAddress = new Map(ips.map((ip, index) => [ip, reverseDns[index]]));
   const environmentConsistency = assessEnvironmentConsistency({ browser: currentReport.browser, fingerprint: fingerprintExposure, privacy: currentReport.privacy });
   const stunMapping = compareStunMappings(stun.map((item) => ({ server: item.server, candidates: item.result.candidates })));
   advancedResults.replaceChildren();
 
-  ips.forEach((ip, index) => {
-    const intel = intelligence[index]; const ptr = reverseDns[index];
-    const row = advancedDisclosure({ id: `network-${ip.includes(':') ? 'v6' : 'v4'}`, title: `${ip.includes(':') ? 'IPv6' : 'IPv4'} network`, status: intel?.status === 'complete' ? 'complete' : 'partial', summary: [intel?.asn, intel?.organization].filter(Boolean).join(' · ') || ip });
-    text(row.body, ip, 'card-value'); rows(row.body, intelligenceRows(intel));
-    rows(row.body, [['Reverse DNS', ptr?.names?.join(', ') || (ptr?.status === 'complete' ? 'No PTR record' : 'Unavailable')], ['PTR resolvers', `${ptr?.agreement?.available ?? 0}/${ptr?.agreement?.total ?? 0}${ptr?.agreement?.agree ? ' · agree' : ' · differ'}`]]);
-    renderIpProviderEvidence(row.body, ipEntries[index]);
+  familyEntries.forEach((entry) => {
+    const ip = authoritativeIpAddress(entry);
+    const family = entry.family ?? (ip?.includes(':') ? 6 : 4);
+    const intel = ip ? intelligenceByAddress.get(ip) : null;
+    const ptr = ip ? reverseDnsByAddress.get(ip) : null;
+    const noConsensus = entry.confidence === 'no-consensus';
+    const row = advancedDisclosure({
+      id: `network-v${family}`,
+      title: `IPv${family} network`,
+      status: noConsensus ? 'review' : intel?.status === 'complete' ? 'complete' : 'partial',
+      summary: ip ? ([intel?.asn, intel?.organization].filter(Boolean).join(' · ') || ip) : noConsensus ? 'No consensus' : 'Unavailable'
+    });
+    if (ip) {
+      text(row.body, ip, 'card-value'); rows(row.body, intelligenceRows(intel));
+      rows(row.body, [['Reverse DNS', ptr?.names?.join(', ') || (ptr?.status === 'complete' ? 'No PTR record' : 'Unavailable')], ['PTR resolvers', `${ptr?.agreement?.available ?? 0}/${ptr?.agreement?.total ?? 0}${ptr?.agreement?.agree ? ' · agree' : ' · differ'}`]]);
+    } else {
+      text(row.body, noConsensus ? 'No authoritative public IP was selected. Review the source votes below.' : 'No public IP was confirmed for this family.', 'card-detail');
+    }
+    renderIpProviderEvidence(row.body, entry);
   });
 
   const tlsAvailable = ['complete', 'partial'].includes(tlsFingerprint.status);
@@ -494,14 +534,20 @@ function syncPresentationTicker() {
   presentationTicker?.sync(active);
 }
 
+function runStressIpConsensus(family) {
+  return runIpConsensus({
+    family,
+    primaryGroups: networkConfig.stressIpProviderGroups[family],
+    reserveGroups: [],
+    timeoutMs: networkConfig.requestTimeoutMs
+  });
+}
+
 function createMonitor() {
   return createIpMonitor({
     intervalMs: appConfig.monitorIntervalMs,
     sample: async () => {
-      const [ipv4, ipv6] = await Promise.all([
-        runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }),
-        runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })
-      ]);
+      const [ipv4, ipv6] = await Promise.all([runStressIpConsensus(4), runStressIpConsensus(6)]);
       return { ipv4, ipv6 };
     },
     onUpdate: (state) => { renderMonitor(state); syncPresentationTicker(); reassess(); }
@@ -528,10 +574,10 @@ function handleAggressiveUpdate(state) {
   queueMicrotask(() => enrichAggressiveExposures(state)); reassess();
 }
 function createAggressiveController() {
-  const initialBaseline = { 4: [currentReport?.ipv4?.address].filter(Boolean), 6: [currentReport?.ipv6?.address].filter(Boolean) };
+  const initialBaseline = { 4: [authoritativeIpAddress(currentReport?.ipv4)].filter(Boolean), 6: [authoritativeIpAddress(currentReport?.ipv6)].filter(Boolean) };
   return createAggressiveLeakTest({
     config: appConfig, initialBaseline, environment: window,
-    sampleHttp: async () => Promise.all([runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }), runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })]),
+    sampleHttp: async () => Promise.all([runStressIpConsensus(4), runStressIpConsensus(6)]),
     sampleStun: () => Promise.all(networkConfig.stunUrls.map(async (server) => ({ server, result: await runWebRtcTest({ stunUrls: [server], timeoutMs: networkConfig.webrtcTimeoutMs }) }))),
     sampleEcho: () => runHttpInspection({ endpoint: networkConfig.httpEchoEndpoint, timeoutMs: networkConfig.advancedTimeoutMs }),
     sampleTls: () => runTlsFingerprint({ endpoint: networkConfig.tlsReflectorEndpoint, timeoutMs: networkConfig.fingerprintTimeoutMs }),
@@ -543,14 +589,14 @@ function guidedObservationRow(item, index) {
   return { ...item, status: item?.successful ? 'complete' : item?.status ?? 'unavailable', providerLabel: item?.providerLabel ?? item?.source ?? item?.providerId ?? 'Guided path', pathId: item?.providerId ?? item?.pathId ?? `${item?.channel ?? item?.transportClass ?? 'path'}:${item?.source ?? index}`, timestampMs: item?.timestampMs ?? Date.now() };
 }
 async function sampleGuidedRawHttp(trigger) {
-  const families = await Promise.all([4, 6].map((family) => collectProviderObservations({ family, providers: networkConfig.ipProviders[family], timeoutMs: networkConfig.requestTimeoutMs, trigger })));
+  const families = await Promise.all([4, 6].map((family) => collectProviderObservations({ family, groups: networkConfig.stressIpProviderGroups[family], timeoutMs: networkConfig.requestTimeoutMs, trigger })));
   return families.flat();
 }
 function createGuidedStressController(profile, recordObservations, onStressUpdate) {
   guidedStressSampleCursor = 0;
   return createAggressiveLeakTest({
     config: appConfig, initialBaseline: { 4: [], 6: [] }, guidedProfile: profile, environment: window,
-    sampleHttp: async () => Promise.all([runIpConsensus({ family: 4, providers: networkConfig.ipProviders[4], timeoutMs: networkConfig.requestTimeoutMs }), runIpConsensus({ family: 6, providers: networkConfig.ipProviders[6], timeoutMs: networkConfig.requestTimeoutMs })]),
+    sampleHttp: async () => Promise.all([runStressIpConsensus(4), runStressIpConsensus(6)]),
     sampleHttpObservations: sampleGuidedRawHttp,
     sampleStun: () => Promise.all(networkConfig.stunDestinations.map(async (destination) => ({ server: destination.urls[0], group: destination.group, result: await runWebRtcTest({ stunUrls: destination.urls, timeoutMs: networkConfig.webrtcTimeoutMs }) }))),
     sampleWebRtcStress: (trigger) => runWebRtcStress({ destinations: networkConfig.stunDestinations, timeoutMs: networkConfig.webrtcTimeoutMs, trigger }),

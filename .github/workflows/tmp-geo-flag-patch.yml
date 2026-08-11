@@ -12,89 +12,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/fast-core-ru-geoip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Patch location and flag rendering
+        run: node scripts/tmp-patch-geo-flag.mjs
+      - name: Commit patch and remove temporary files
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('assets/app.js')
-          s = p.read_text()
-          old = "import { countryCodeToFlagUrl } from './country.js';"
-          new = "import { buildCountryFlagPresentation } from './country.js';"
-          if s.count(old) != 1: raise SystemExit('country import mismatch')
-          s = s.replace(old, new)
-
-          old = '''function locationNode(geo) {
-            const wrapper = document.createElement('span'); wrapper.className = 'location-value';
-            const url = countryCodeToFlagUrl(geo?.countryCode);
-            if (url) {
-              const img = document.createElement('img'); img.className = 'country-flag'; img.src = url; img.alt = ''; img.width = 20; img.height = 15;
-              img.addEventListener('error', () => img.remove(), { once: true }); wrapper.append(img);
-            }
-            const value = document.createElement('span');
-            const place = [geo?.city, geo?.region].filter(Boolean).join(', ');
-            value.textContent = [geo?.country, place].filter(Boolean).join(' · ') || 'Unknown';
-            wrapper.append(value); return wrapper;
-          }'''
-          old = '\n'.join(line.strip() if False else line for line in old.splitlines())
-          actual = """function locationNode(geo) {
-  const wrapper = document.createElement('span'); wrapper.className = 'location-value';
-  const url = countryCodeToFlagUrl(geo?.countryCode);
-  if (url) {
-    const img = document.createElement('img'); img.className = 'country-flag'; img.src = url; img.alt = ''; img.width = 20; img.height = 15;
-    img.addEventListener('error', () => img.remove(), { once: true }); wrapper.append(img);
-  }
-  const value = document.createElement('span');
-  const place = [geo?.city, geo?.region].filter(Boolean).join(', ');
-  value.textContent = [geo?.country, place].filter(Boolean).join(' · ') || 'Unknown';
-  wrapper.append(value); return wrapper;
-}"""
-          replacement = """function locationNode(geo) {
-  const wrapper = document.createElement('span'); wrapper.className = 'location-value';
-  const presentation = buildCountryFlagPresentation(geo?.countryCode);
-  if (presentation.imageUrl || presentation.emoji) {
-    const slot = document.createElement('span'); slot.className = 'country-flag-slot';
-    const emoji = document.createElement('span'); emoji.className = 'country-flag-emoji'; emoji.textContent = presentation.emoji; emoji.hidden = Boolean(presentation.imageUrl);
-    if (presentation.imageUrl) {
-      const img = document.createElement('img'); img.className = 'country-flag'; img.src = presentation.imageUrl; img.alt = ''; img.width = 20; img.height = 15;
-      img.addEventListener('error', () => { img.remove(); emoji.hidden = !presentation.emoji; }, { once: true });
-      slot.append(img);
-    }
-    slot.append(emoji); wrapper.append(slot);
-  }
-  const value = document.createElement('span');
-  const place = [geo?.city, geo?.region].filter(Boolean).join(', ');
-  value.textContent = [geo?.country, place].filter(Boolean).join(' · ') || 'Unknown';
-  wrapper.append(value); return wrapper;
-}"""
-          if s.count(actual) != 1: raise SystemExit(f'locationNode mismatch {s.count(actual)}')
-          s = s.replace(actual, replacement)
-
-          actual = """    if (primary.locationState === 'available') {
-      const line = document.createElement('div'); line.className = 'connection-location'; line.append(locationNode(primaryIp?.geo)); connectionBody.append(line);
-    } else if (primary.locationState === 'locating') text(connectionBody, 'Locating…', 'connection-meta');
-    if (primary.network) text(connectionBody, primary.network, 'connection-meta');"""
-          replacement = """    if (primary.locationState === 'available') {
-      const line = document.createElement('div'); line.className = 'connection-location'; line.append(locationNode(primaryIp?.geo)); connectionBody.append(line);
-      if (primary.locationDisagreement) text(connectionBody, 'GeoIP providers disagree', 'connection-location-warning');
-    } else if (primary.locationState === 'locating') text(connectionBody, 'Locating…', 'connection-meta');
-    else if (primary.locationState === 'unavailable') text(connectionBody, 'Location unavailable', 'connection-meta');
-    if (primary.network) text(connectionBody, primary.network, 'connection-meta');"""
-          if s.count(actual) != 1: raise SystemExit('primary location block mismatch')
-          s = s.replace(actual, replacement)
-          p.write_text(s)
-
-          css = Path('assets/dashboard.css')
-          c = css.read_text()
-          addition = ".country-flag-slot{display:inline-flex;align-items:center;justify-content:center;width:20px;min-width:20px}.country-flag-emoji{font-size:1rem;line-height:1}.connection-location-warning{margin:4px 0 0;color:var(--warning);font-size:.78rem;overflow-wrap:anywhere}"
-          if '.country-flag-slot{' not in c:
-            c += addition
-          css.write_text(c)
-          PY
-          rm .github/workflows/tmp-geo-flag-patch.yml
-      - name: Commit patch
-        run: |
+          rm .github/workflows/tmp-geo-flag-patch.yml scripts/tmp-patch-geo-flag.mjs
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/app.js assets/dashboard.css .github/workflows/tmp-geo-flag-patch.yml
+          git add assets/app.js assets/dashboard.css .github/workflows/tmp-geo-flag-patch.yml scripts/tmp-patch-geo-flag.mjs
           git commit -m "fix: render GeoIP location with flag fallback"
           git push origin HEAD:feature/fast-core-ru-geoip

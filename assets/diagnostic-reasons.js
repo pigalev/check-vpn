@@ -57,6 +57,7 @@ function slug(code) {
 function stableId(code, context) {
   if (code === 'IP_NO_CONSENSUS' && context.family) return `ipv${context.family}-no-consensus`;
   if (code === 'GEO_COUNTRY_DISAGREEMENT' && context.family) return `ipv${context.family}-geo-country-disagreement`;
+  if (code === 'BROWSER_TIMEZONE_MISMATCH') return 'timezone-mismatch';
   const familySuffix = context.family ? `-v${context.family}` : '';
   return `${slug(code)}${familySuffix}`;
 }
@@ -77,12 +78,14 @@ export function reason(code, context = {}) {
 }
 
 export function reasonForGeoState({ family, countryState, locationState, countries = [], locations = [] }) {
-  if (countryState === 'disagree') return [reason('GEO_COUNTRY_DISAGREEMENT', { family, countries })];
   if (countryState === 'unavailable' && locationState === 'unavailable') return [reason('GEO_UNAVAILABLE', { family })];
-  if (countryState === 'single-source') return [reason('GEO_COUNTRY_SINGLE_SOURCE', { family })];
-  if (locationState === 'disagree') return [reason('GEO_LOCATION_DISAGREEMENT', { family, locations })];
-  if (locationState === 'single-source') return [reason('GEO_LOCATION_SINGLE_SOURCE', { family })];
-  return [];
+  if (countryState === 'disagree') return [reason('GEO_COUNTRY_DISAGREEMENT', { family, countries })];
+
+  const reasons = [];
+  if (countryState === 'single-source') reasons.push(reason('GEO_COUNTRY_SINGLE_SOURCE', { family }));
+  if (locationState === 'disagree') reasons.push(reason('GEO_LOCATION_DISAGREEMENT', { family, locations }));
+  else if (locationState === 'single-source') reasons.push(reason('GEO_LOCATION_SINGLE_SOURCE', { family }));
+  return reasons;
 }
 
 export function reasonForIpConsensus({ family, confidence }) {

@@ -160,7 +160,7 @@ export function createGuidedAppRuntime({
   }
 
   async function collectFamily(family, trigger = 'guided-capture') {
-    const result = await collectProviderObservations({ family, providers: networkConfig.ipProviders[family], timeoutMs: networkConfig.requestTimeoutMs, trigger });
+    const result = await collectProviderObservations({ family, groups: networkConfig.coreIpProviderGroups[family], timeoutMs: networkConfig.requestTimeoutMs, trigger });
     observations.push(...result.map((item) => ({ ...item, transportClass: 'http' })));
     return result;
   }

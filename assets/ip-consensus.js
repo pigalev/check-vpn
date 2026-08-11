@@ -1,5 +1,5 @@
 import { runIpProviderGroup } from './ip-provider-group.js';
-import { canGuaranteeStrong, countVotes } from './ip-consensus-race.js';
+import { canGuaranteeStrong, countVotes, isStrongVote } from './ip-consensus-race.js';
 
 function asLegacyGroup(provider, family) {
   return {
@@ -19,7 +19,7 @@ function normalizePrimaryGroups({ primaryGroups, providers, family }) {
 
 function evaluateGroupVotes(sources) {
   const vote = countVotes(sources);
-  const strong = vote.successful.length >= 3 && vote.winningShare >= (2 / 3);
+  const strong = isStrongVote(vote);
   const partial = vote.successful.length > 0 && vote.successful.length <= 2 && vote.allAgree;
   return { ...vote, strong, partial };
 }

@@ -71,7 +71,9 @@ test('WebRTC Permission Check remains explicit and not the 60-second stress test
 
 test('Advanced network rows render already-collected public IP provider evidence', () => {
   assert.match(app, /renderIpProviderEvidence/);
-  assert.match(app, /const ipEntries = \[currentReport\.ipv4, currentReport\.ipv6\]/);
+  assert.match(app, /const familyEntries = \[currentReport\.ipv4, currentReport\.ipv6\]/);
+  assert.match(app, /renderIpProviderEvidence\(row\.body, entry\)/);
+  assert.match(app, /result\.sources/);
   assert.match(providerRender, /Public IP sources/);
   assert.match(providerRender, /buildIpProviderEvidence/);
   assert.match(providerRender, /result/);

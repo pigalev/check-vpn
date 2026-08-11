@@ -14,9 +14,14 @@ test('network endpoints and timeouts are configured', () => {
   assert.match(networkConfig.ipv4Endpoint, /^https:\/\//);
   assert.match(networkConfig.ipv6Endpoint, /^https:\/\//);
   assert.ok(Array.isArray(networkConfig.geoIpProviders));
-  assert.equal(networkConfig.geoIpProviders.length, 4);
-  assert.deepEqual(networkConfig.geoIpProviders.map((provider) => provider.id), ['ipapi', 'ipwhois', 'freeipapi', 'ipapiis']);
+  assert.equal(networkConfig.geoIpProviders.length, 5);
+  assert.deepEqual(networkConfig.geoIpProviders.map((provider) => provider.id), ['ipapi', 'ipwhois', 'freeipapi', 'ipapiis', 'sypex-ru']);
+  const sypex = networkConfig.geoIpProviders.find((provider) => provider.id === 'sypex-ru');
+  assert.equal(sypex.kind, 'sypex');
+  assert.deepEqual(sypex.families, [4]);
+  assert.equal(sypex.urlTemplate, 'https://ru.sxgeo.city/json/{ip}');
   assert.ok(networkConfig.stunUrls.every((url) => url.startsWith('stun:')));
+  assert.equal(networkConfig.coreIpTimeoutMs, 3200);
   assert.ok(networkConfig.requestTimeoutMs >= 3000);
   assert.ok(networkConfig.geoIpTimeoutMs >= 3000);
   assert.ok(networkConfig.webrtcTimeoutMs >= 3000);
@@ -33,12 +38,13 @@ test('core, reserve and stress IP provider profiles are independent', () => {
   }
 });
 
-test('IPPubblico remains configured as a disabled reserve after failed browser CORS smoke', () => {
+test('IPPubblico remains configured as a live reserve-tier Core source', () => {
   for (const family of [4, 6]) {
     const reserve = networkConfig.reserveIpProviderGroups[family][0];
     assert.equal(reserve.group, 'ippubblico');
-    assert.equal(reserve.enabled, false);
-    assert.match(reserve.disabledReason, /CORS/i);
+    assert.equal(reserve.tier, 'reserve');
+    assert.notEqual(reserve.enabled, false);
+    assert.equal(reserve.endpoints.length, 1);
   }
 });
 
@@ -47,6 +53,7 @@ test('ident redundancy lives inside one voting group', () => {
     const ident = networkConfig.coreIpProviderGroups[family].find((group) => group.group === 'ident');
     assert.ok(ident);
     assert.equal(ident.endpoints.length, 2);
+    assert.equal(ident.hedgeDelayMs, 900);
     assert.match(ident.endpoints[0].url, /ident\.me/);
     assert.match(ident.endpoints[1].url, /tnedi\.me/);
   }

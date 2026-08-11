@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { countryCodeToFlag, countryCodeToFlagUrl } from '../assets/country.js';
+import { countryCodeToFlag, countryCodeToFlagUrl, buildCountryFlagPresentation } from '../assets/country.js';
 
 test('converts uppercase country code to flag', () => {
   assert.equal(countryCodeToFlag('DE'), '🇩🇪');
@@ -28,4 +28,17 @@ test('builds a reliable flag image URL', () => {
 test('returns no flag image URL for missing or invalid country code', () => {
   assert.equal(countryCodeToFlagUrl('D'), '');
   assert.equal(countryCodeToFlagUrl(null), '');
+});
+
+test('flag presentation provides image and Unicode fallback together', () => {
+  assert.deepEqual(buildCountryFlagPresentation('ru'), {
+    code:'RU',
+    imageUrl:'https://flagcdn.com/24x18/ru.png',
+    emoji:'🇷🇺'
+  });
+});
+
+test('invalid country has no invented flag', () => {
+  assert.deepEqual(buildCountryFlagPresentation(''), { code:null, imageUrl:null, emoji:'' });
+  assert.deepEqual(buildCountryFlagPresentation('RUS'), { code:null, imageUrl:null, emoji:'' });
 });

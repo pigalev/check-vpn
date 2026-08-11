@@ -36,13 +36,15 @@ function group(id, groupName, label, family, tier, endpoints, options = {}) {
   return Object.freeze({ id, group: groupName, label, family, tier, endpoints: Object.freeze(endpoints), ...options });
 }
 
+const IP_PROVIDER_HEDGE_DELAY_MS = 900;
+
 const coreIpProviderGroups = {
   4: Object.freeze([
     group('ipify4', 'ipify', 'ipify', 4, 'primary', [endpoint('ipify4-http', 'ipify', 'https://api4.ipify.org?format=json')]),
     group('ident4', 'ident', 'ident.me', 4, 'primary', [
       endpoint('ident4-primary', 'text', 'https://4.ident.me/'),
       endpoint('ident4-mirror', 'text', 'https://4.tnedi.me/')
-    ]),
+    ], { hedgeDelayMs: IP_PROVIDER_HEDGE_DELAY_MS }),
     group('seeip4', 'seeip', 'SeeIP', 4, 'primary', [endpoint('seeip4-http', 'json', 'https://ipv4.seeip.org/jsonip')]),
     group('icanhaz4', 'icanhazip', 'icanhazip', 4, 'primary', [endpoint('icanhaz4-http', 'text', 'https://ipv4.icanhazip.com/')]),
     group('ipsb4', 'ipsb', 'IP.SB', 4, 'primary', [endpoint('ipsb4-http', 'text', 'https://api-ipv4.ip.sb/ip')])
@@ -52,7 +54,7 @@ const coreIpProviderGroups = {
     group('ident6', 'ident', 'ident.me', 6, 'primary', [
       endpoint('ident6-primary', 'text', 'https://6.ident.me/'),
       endpoint('ident6-mirror', 'text', 'https://6.tnedi.me/')
-    ]),
+    ], { hedgeDelayMs: IP_PROVIDER_HEDGE_DELAY_MS }),
     group('seeip6', 'seeip', 'SeeIP', 6, 'primary', [endpoint('seeip6-http', 'json', 'https://ipv6.seeip.org/jsonip')]),
     group('icanhaz6', 'icanhazip', 'icanhazip', 6, 'primary', [endpoint('icanhaz6-http', 'text', 'https://ipv6.icanhazip.com/')]),
     group('ipsb6', 'ipsb', 'IP.SB', 6, 'primary', [endpoint('ipsb6-http', 'text', 'https://api-ipv6.ip.sb/ip')])
@@ -61,16 +63,10 @@ const coreIpProviderGroups = {
 
 const reserveIpProviderGroups = {
   4: Object.freeze([
-    group('ippubblico4', 'ippubblico', 'IPPubblico', 4, 'reserve', [endpoint('ippubblico4-http', 'text', 'https://ipv4.ippubblico.org/')], {
-      enabled: false,
-      disabledReason: 'Browser CORS unavailable'
-    })
+    group('ippubblico4', 'ippubblico', 'IPPubblico', 4, 'reserve', [endpoint('ippubblico4-http', 'text', 'https://ipv4.ippubblico.org/')])
   ]),
   6: Object.freeze([
-    group('ippubblico6', 'ippubblico', 'IPPubblico', 6, 'reserve', [endpoint('ippubblico6-http', 'text', 'https://ipv6.ippubblico.org/')], {
-      enabled: false,
-      disabledReason: 'Browser CORS unavailable'
-    })
+    group('ippubblico6', 'ippubblico', 'IPPubblico', 6, 'reserve', [endpoint('ippubblico6-http', 'text', 'https://ipv6.ippubblico.org/')])
   ])
 };
 
@@ -97,7 +93,8 @@ export const networkConfig = Object.freeze({
     Object.freeze({ id: 'ipapi', label: 'ipapi.co', kind: 'ipapi', urlTemplate: 'https://ipapi.co/{ip}/json/' }),
     Object.freeze({ id: 'ipwhois', label: 'ipwho.is', kind: 'ipwhois', urlTemplate: 'https://ipwho.is/{ip}' }),
     Object.freeze({ id: 'freeipapi', label: 'FreeIPAPI', kind: 'freeipapi', urlTemplate: 'https://free.freeipapi.com/api/json/{ip}' }),
-    Object.freeze({ id: 'ipapiis', label: 'ipapi.is', kind: 'ipapiis', urlTemplate: 'https://api.ipapi.is/?q={ip}' })
+    Object.freeze({ id: 'ipapiis', label: 'ipapi.is', kind: 'ipapiis', urlTemplate: 'https://api.ipapi.is/?q={ip}' }),
+    Object.freeze({ id: 'sypex-ru', label: 'Sypex Geo RU', kind: 'sypex', families: Object.freeze([4]), urlTemplate: 'https://ru.sxgeo.city/json/{ip}' })
   ]),
   intelligenceUrlTemplate: 'https://api.ipapi.is/?q={ip}',
   dohResolvers: Object.freeze([
@@ -108,6 +105,8 @@ export const networkConfig = Object.freeze({
   tlsReflectorEndpoint: 'https://tls.peet.ws/api/all',
   stunDestinations: Object.freeze(stunDestinations.map((destination) => Object.freeze({ ...destination, urls: Object.freeze([...destination.urls]) }))),
   stunUrls: Object.freeze(stunDestinations.slice(0, 2).flatMap((destination) => destination.urls)),
+  coreIpTimeoutMs: 3200,
+  ipProviderHedgeDelayMs: IP_PROVIDER_HEDGE_DELAY_MS,
   requestTimeoutMs: 6000,
   geoIpTimeoutMs: 6000,
   advancedTimeoutMs: 7000,

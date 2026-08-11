@@ -13,3 +13,13 @@ export function countryCodeToFlagUrl(code) {
   if (!/^[a-z]{2}$/.test(normalized)) return '';
   return `https://flagcdn.com/24x18/${normalized}.png`;
 }
+
+export function buildCountryFlagPresentation(code) {
+  const normalized = typeof code === 'string' ? code.trim().toUpperCase() : '';
+  if (!/^[A-Z]{2}$/.test(normalized)) return { code:null, imageUrl:null, emoji:'' };
+  return {
+    code: normalized,
+    imageUrl: countryCodeToFlagUrl(normalized) || null,
+    emoji: countryCodeToFlag(normalized)
+  };
+}

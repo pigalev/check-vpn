@@ -9,12 +9,21 @@ test('core imports progressive IP and GeoIP runners', () => {
   assert.match(app, /runGeoIpConsensusProgressive/);
 });
 
-test('core uses broad primary plus conditional reserve groups', () => {
+test('core uses broad primary plus reserve groups with the fast Core deadline', () => {
   assert.match(app, /primaryGroups:\s*networkConfig\.coreIpProviderGroups\[4\]/);
   assert.match(app, /reserveGroups:\s*networkConfig\.reserveIpProviderGroups\[4\]/);
   assert.match(app, /primaryGroups:\s*networkConfig\.coreIpProviderGroups\[6\]/);
   assert.match(app, /reserveGroups:\s*networkConfig\.reserveIpProviderGroups\[6\]/);
+  const coreSlice = app.slice(app.indexOf('const ipv4Promise'), app.indexOf('const webrtcPromise'));
+  assert.match(coreSlice, /timeoutMs:\s*networkConfig\.coreIpTimeoutMs/g);
+  assert.doesNotMatch(coreSlice, /timeoutMs:\s*networkConfig\.requestTimeoutMs/);
   assert.doesNotMatch(app, /networkConfig\.ipProviders/);
+});
+
+test('repeated stress sampling keeps the existing request timeout and small stress profile', () => {
+  const stressSlice = app.slice(app.indexOf('function runStressIpConsensus'), app.indexOf('function createMonitor'));
+  assert.match(stressSlice, /primaryGroups:\s*networkConfig\.stressIpProviderGroups\[family\]/);
+  assert.match(stressSlice, /timeoutMs:\s*networkConfig\.requestTimeoutMs/);
 });
 
 test('core no longer waits for one Promise.all of IP4 IP6 and WebRTC before rendering', () => {

@@ -1,4 +1,5 @@
 import { runIpProviderGroup } from './ip-provider-group.js';
+import { canGuaranteeStrong, countVotes } from './ip-consensus-race.js';
 
 function asLegacyGroup(provider, family) {
   return {
@@ -17,17 +18,10 @@ function normalizePrimaryGroups({ primaryGroups, providers, family }) {
 }
 
 function evaluateGroupVotes(sources) {
-  const successful = sources.filter((source) => source.status === 'complete' && source.address);
-  const counts = {};
-  for (const source of successful) counts[source.address] = (counts[source.address] ?? 0) + 1;
-  const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  const winner = ranked[0]?.[0] ?? null;
-  const selectedVotes = ranked[0]?.[1] ?? 0;
-  const winningShare = successful.length ? selectedVotes / successful.length : 0;
-  const allAgree = ranked.length <= 1;
-  const strong = successful.length >= 3 && winningShare >= (2 / 3);
-  const partial = successful.length > 0 && successful.length <= 2 && allAgree;
-  return { successful, counts, ranked, winner, selectedVotes, winningShare, allAgree, strong, partial };
+  const vote = countVotes(sources);
+  const strong = vote.successful.length >= 3 && vote.winningShare >= (2 / 3);
+  const partial = vote.successful.length > 0 && vote.successful.length <= 2 && vote.allAgree;
+  return { ...vote, strong, partial };
 }
 
 function sourceShell(group, family, status, error = null) {
@@ -47,16 +41,16 @@ function sourceShell(group, family, status, error = null) {
 }
 
 function notNeededSource(group, family) {
-  return sourceShell(group, family, 'not-needed');
+  return sourceShell(group, family, 'not-needed', 'Consensus already guaranteed');
 }
 
 function disabledSource(group, family) {
   return sourceShell(group, family, 'disabled', group.disabledReason ?? 'Provider disabled');
 }
 
-function buildFinalResult({ family, primaryGroups, primarySources, reserveSources, reserveUsed }) {
-  const attemptedReserve = reserveSources.filter((source) => !['not-needed', 'disabled'].includes(source.status));
-  const attemptedSources = [...primarySources, ...attemptedReserve];
+function buildFinalResult({ family, primaryGroups, primarySources, reserveSources }) {
+  const allSources = [...primarySources, ...reserveSources];
+  const attemptedSources = allSources.filter((source) => ['complete', 'unavailable'].includes(source.status));
   const vote = evaluateGroupVotes(attemptedSources);
   let confidence;
   let status;
@@ -79,8 +73,8 @@ function buildFinalResult({ family, primaryGroups, primarySources, reserveSource
   }
 
   const observedAddresses = [...new Set(vote.successful.map((source) => source.address))];
-  const totalAttempted = primaryGroups.length + attemptedReserve.length;
   const primaryAvailable = primarySources.filter((source) => source.status === 'complete').length;
+  const reserveUsed = reserveSources.some((source) => ['complete', 'unavailable'].includes(source.status));
 
   return {
     status,
@@ -90,13 +84,13 @@ function buildFinalResult({ family, primaryGroups, primarySources, reserveSource
     observedAddresses,
     agreement: {
       available: vote.successful.length,
-      total: totalAttempted,
+      total: attemptedSources.length,
       agree: vote.allAgree,
       counts: vote.counts,
       selectedVotes: vote.selectedVotes,
       winningShare: vote.winningShare
     },
-    sources: [...primarySources, ...reserveSources],
+    sources: allSources,
     primary: {
       available: primaryAvailable,
       total: primaryGroups.length,
@@ -141,42 +135,89 @@ export async function runIpConsensusProgressive({
   onFirstValid = null
 }) {
   const normalizedPrimary = normalizePrimaryGroups({ primaryGroups, providers, family });
+  const configured = [...normalizedPrimary, ...reserveGroups];
+  const disabled = new Map(configured
+    .filter((group) => group.enabled === false)
+    .map((group) => [group.id, disabledSource(group, family)]));
+  const enabled = configured.filter((group) => group.enabled !== false);
+  const controllers = new Map();
+  const settled = new Map();
+  let pending = enabled.length;
   let emitted = false;
+  let finished = false;
+  let finishReason = null;
+  let resolveDone;
+  const done = new Promise((resolve) => { resolveDone = resolve; });
 
-  const primarySources = await Promise.all(normalizedPrimary.map(async (group) => {
-    const source = await runIpProviderGroup({ group, family, timeoutMs, fetchImpl });
-    if (!emitted && source.status === 'complete') {
-      emitted = true;
-      onFirstValid?.(source);
+  function finish(reason) {
+    if (finished) return;
+    finished = true;
+    finishReason = reason;
+    if (reason === 'strong-guaranteed') {
+      for (const group of enabled) {
+        if (!settled.has(group.id)) controllers.get(group.id)?.abort('consensus-guaranteed');
+      }
     }
-    return source;
-  }));
+    resolveDone();
+  }
 
-  const primaryVote = evaluateGroupVotes(primarySources);
-  let reserveUsed = false;
-  let reserveSources;
+  function maybeFinish() {
+    if (finished) return;
+    if (canGuaranteeStrong({ sources:[...settled.values()], pendingCount:pending })) {
+      finish('strong-guaranteed');
+      return;
+    }
+    if (pending === 0) finish('all-settled');
+  }
 
-  if (primaryVote.strong) {
-    reserveSources = reserveGroups.map((group) => notNeededSource(group, family));
-  } else {
-    reserveUsed = reserveGroups.length > 0;
-    reserveSources = await Promise.all(reserveGroups.map(async (group) => {
-      if (group.enabled === false) return disabledSource(group, family);
-      const source = await runIpProviderGroup({ group, family, timeoutMs, fetchImpl });
+  if (enabled.length === 0) finish('all-settled');
+
+  for (const group of enabled) {
+    const controller = new AbortController();
+    controllers.set(group.id, controller);
+    Promise.resolve(runIpProviderGroup({
+      group,
+      family,
+      timeoutMs,
+      fetchImpl,
+      signal: controller.signal,
+      hedgeDelayMs: group.hedgeDelayMs ?? null
+    })).then((source) => {
+      if (finished && finishReason === 'strong-guaranteed' && controller.signal.aborted && !settled.has(group.id)) return;
+      if (settled.has(group.id)) return;
+      settled.set(group.id, source);
+      pending = Math.max(0, pending - 1);
       if (!emitted && source.status === 'complete') {
         emitted = true;
         onFirstValid?.(source);
       }
-      return source;
-    }));
+      maybeFinish();
+    }).catch(() => {
+      if (finished && finishReason === 'strong-guaranteed' && controller.signal.aborted) return;
+      if (settled.has(group.id)) return;
+      settled.set(group.id, sourceShell(group, family, 'unavailable', 'Request failed'));
+      pending = Math.max(0, pending - 1);
+      maybeFinish();
+    });
   }
+
+  await done;
+
+  function sourceFor(group) {
+    if (disabled.has(group.id)) return disabled.get(group.id);
+    if (settled.has(group.id)) return settled.get(group.id);
+    if (finishReason === 'strong-guaranteed') return notNeededSource(group, family);
+    return sourceShell(group, family, 'unavailable', 'Request did not settle');
+  }
+
+  const primarySources = normalizedPrimary.map(sourceFor);
+  const reserveSources = reserveGroups.map(sourceFor);
 
   return buildFinalResult({
     family,
     primaryGroups: normalizedPrimary,
     primarySources,
-    reserveSources,
-    reserveUsed
+    reserveSources
   });
 }
 

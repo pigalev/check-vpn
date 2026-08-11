@@ -1,18 +1,18 @@
-import { runIpProvider } from './ip-consensus.js';
+import { runIpProviderGroup } from './ip-provider-group.js';
 
-export async function collectProviderObservations({ family, providers, timeoutMs, fetchImpl = fetch, now = () => Date.now(), trigger = 'manual' }) {
-  const completedAt = now();
-  const sources = await Promise.all((providers ?? []).map((provider) => runIpProvider({ provider, family, timeoutMs, fetchImpl })));
-  return sources.map((source, index) => ({
-    timestampMs: completedAt,
+export async function collectProviderObservations({ family, groups, timeoutMs, fetchImpl = fetch, now = () => Date.now(), trigger = 'manual' }) {
+  const sources = await Promise.all((groups ?? []).map((group) => runIpProviderGroup({ group, family, timeoutMs, fetchImpl })));
+  return sources.map((source) => ({
+    timestampMs: now(),
     family,
     providerId: source.id,
     providerLabel: source.label,
-    providerGroup: providers?.[index]?.group ?? source.id,
+    providerGroup: source.group ?? source.id,
     address: source.address,
     latencyMs: source.latencyMs,
     status: source.status,
     error: source.error,
+    attempts: source.attempts ?? [],
     trigger
   }));
 }

@@ -1,0 +1,44 @@
+name: Temporary Fast Core Patch
+on:
+  push:
+    branches: [feature/fast-core-ru-geoip]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/fast-core-ru-geoip
+      - name: Patch Core timeout only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('assets/app.js')
+          s = p.read_text()
+          replacements = [
+            (
+              "primaryGroups: networkConfig.coreIpProviderGroups[4],\n    reserveGroups: networkConfig.reserveIpProviderGroups[4],\n    timeoutMs: networkConfig.requestTimeoutMs,",
+              "primaryGroups: networkConfig.coreIpProviderGroups[4],\n    reserveGroups: networkConfig.reserveIpProviderGroups[4],\n    timeoutMs: networkConfig.coreIpTimeoutMs,"
+            ),
+            (
+              "primaryGroups: networkConfig.coreIpProviderGroups[6],\n    reserveGroups: networkConfig.reserveIpProviderGroups[6],\n    timeoutMs: networkConfig.requestTimeoutMs,",
+              "primaryGroups: networkConfig.coreIpProviderGroups[6],\n    reserveGroups: networkConfig.reserveIpProviderGroups[6],\n    timeoutMs: networkConfig.coreIpTimeoutMs,"
+            )
+          ]
+          for old, new in replacements:
+            if s.count(old) != 1:
+              raise SystemExit(f'Expected exactly one Core timeout block, got {s.count(old)}')
+            s = s.replace(old, new)
+          p.write_text(s)
+          PY
+          rm .github/workflows/tmp-fast-core-patch.yml
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/app.js .github/workflows/tmp-fast-core-patch.yml
+          git commit -m "feat: wire fast Core IP deadline"
+          git push origin HEAD:feature/fast-core-ru-geoip

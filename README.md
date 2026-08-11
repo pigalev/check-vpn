@@ -18,7 +18,7 @@ The underlying core checks include progressive multi-source IPv4/IPv6 consensus,
 
 Public IP and location use progressive rendering. The first valid address returned by a Core provider group is shown immediately while the remaining independent groups continue in the background. GeoIP starts as soon as that provisional address is known. The final report and **Copy JSON** use only the completed consensus result; if the final authoritative address differs from the provisional value, stale GeoIP is ignored and location is resolved for the final address.
 
-The active GeoIP race uses `ipapi.co`, `ipwho.is`, `FreeIPAPI`, and `ipapi.is`. Public-IP voting and GeoIP voting are separate concerns: `ipwho.is` is retained for GeoIP metadata but is no longer consumed as an IP-only Core vote.
+The active IPv4 GeoIP race uses `ipapi.co`, `ipwho.is`, `FreeIPAPI`, `ipapi.is`, and the RU endpoint of `Sypex Geo`. Sypex RU is activation-gated and configured as IPv4-only because that is the family/browser contract verified by the project smoke. IPv6 GeoIP skips it rather than waiting for an incompatible provider. Public-IP voting and GeoIP voting are separate concerns: `ipwho.is` is retained for GeoIP metadata but is no longer consumed as an IP-only Core vote.
 
 A third-party outage never erases successful data from other providers. Provider failures and provider disagreement are diagnostic evidence, not VPN-leak evidence by themselves.
 
@@ -32,7 +32,9 @@ Core IPv4 and IPv6 use independent **provider groups** rather than counting ever
 4. `icanhazip`
 5. `IP.SB`
 
-`ident.me` has `tnedi.me` as an endpoint fallback inside the same group. If the preferred endpoint fails and the mirror succeeds, the group still contributes exactly **one** vote.
+`ident.me` has `tnedi.me` as an endpoint fallback inside the same group. The preferred endpoint starts immediately; if it has not produced a valid answer after **900 ms**, the mirror starts concurrently. The first valid answer wins the group and the group still contributes exactly **one** vote.
+
+Core public-IP discovery uses a **3200 ms** wall-clock deadline and starts all enabled Core-capable groups concurrently, including the reserve-tier IPPubblico group. It may finish before that deadline when Strong consensus is mathematically guaranteed. With winner votes `W`, successful votes `S`, and pending enabled groups `P`, early Strong requires `W >= 3` and `W / (S + P) >= 2/3`. Pending requests aborted after that point are recorded as `Not needed · Consensus already guaranteed`, not as failures.
 
 A successful Core result has one of four confidence states:
 
@@ -52,15 +54,17 @@ Provider-group failures, malformed responses, CORS failures and wrong-family res
 
 ### Reserve provider
 
-`IPPubblico` remains configured as a reserve candidate, but is currently marked `enabled: false`. A live provider smoke from the project origin showed that its IPv4 endpoint returned HTTP 200 and a valid address but did not return a readable CORS permission for the GitHub Pages origin; repeatedly trying it from browser JavaScript would therefore only create predictable failures. It can be re-enabled without changing consensus semantics if browser CORS becomes available again.
+`IPPubblico` remains grouped under **Reserve** in Advanced diagnostics, but it is now a **live browser attempt**, not a globally disabled source. Core starts it concurrently with the other enabled Core-capable groups so it can help degraded/Russian-network paths without adding a second wait phase.
 
-A disabled reserve is excluded from vote totals. Advanced evidence can still explain that the reserve exists but is unavailable/disabled; it never creates a fake disagreement or leak.
+If the user's browser cannot read IPPubblico because of CORS/network policy, the source is simply `unavailable`. If mathematically-safe Strong consensus is reached before IPPubblico finishes, it is aborted and shown as `not needed · consensus already guaranteed`. Either outcome is provider evidence only and never creates a leak finding.
+
+A previous GitHub-runner smoke that lacked readable CORS is no longer treated as a permanent global verdict about every user network.
 
 ### Core versus repeated-test provider profiles
 
 The broad Core race and repeated Active-test sampling have different load profiles and therefore use separate provider lists.
 
-- **Core / Guided Step 1–2 capture:** broad five-group primary set above, plus conditional reserve configuration.
+- **Core / Guided Step 1–2 capture:** broad five-group primary set above plus live reserve-tier IPPubblico for the default Core race; Guided captures retain broad evidence.
 - **Kill Switch / Aggressive / Guided stress:** `ipify + ident.me + SeeIP` only.
 
 This keeps the normal user-facing IP result resilient without sending five-provider consensus requests every two seconds during a 60-second stress run.
@@ -78,7 +82,8 @@ It shows:
 - reserve state;
 - `agrees`, `differs`, `unavailable`, `not needed`, or neutral `observed` relation;
 - latency/error information;
-- endpoint attempts when a provider group used a fallback mirror.
+- `not needed · consensus already guaranteed` for sources cancelled after a safe early Strong result;
+- endpoint attempts when a provider group used a fallback/hedged mirror.
 
 If final confidence is `No consensus`, successful addresses are shown as `observed` instead of arbitrarily labeling one address as the winner.
 
@@ -168,7 +173,7 @@ It repeatedly compares:
 - TLS reflector approximately every 15 seconds;
 - immediate debounced network-change probes.
 
-The HTTP stress path uses only `ipify`, `ident.me`, and `SeeIP`; it does not call the broad five-provider Core set or the disabled IPPubblico reserve every two seconds.
+The HTTP stress path uses only `ipify`, `ident.me`, and `SeeIP`; it does not call the broad Core set or live IPPubblico reserve every two seconds.
 
 The final unguided result is exactly one of:
 
@@ -229,6 +234,8 @@ WebRTC mismatch detection trusts only authoritative Core addresses (`Strong cons
 
 Provider disagreement by itself, reserve usage, GeoIP disagreement, TLS fingerprints, fingerprint surfaces, STUN port variation, CGNAT/local-address exposure, timezone mismatch and VPN/proxy/datacenter classification do not become leaks by themselves. A Strong `4-1` Core consensus remains usable rather than being turned into `Review` solely because one provider differed.
 
+GeoIP agreement has explicit states: `unavailable`, `single-source`, `agree`, and `disagree`. Zero usable countries is **unavailable**, not disagreement. A single usable country is displayed without pretending multiple providers agreed. When providers genuinely disagree but a selected country/location exists, the connection hero still shows that location and a warning. Country flags use FlagCDN as an enhancement with a Unicode flag fallback, while country text remains independent of both.
+
 ## Not available without a project-owned backend
 
 The static page intentionally does not pretend to provide:
@@ -249,10 +256,9 @@ The project itself uses no analytics and stores no persistent result history. Co
 
 The current GitHub Pages configuration may contact multiple third-party services, including:
 
-- **Core public-IP discovery:** ipify, ident.me/tnedi.me, SeeIP, icanhazip and IP.SB;
-- **Configured but disabled reserve:** IPPubblico;
+- **Core public-IP discovery:** ipify, ident.me/tnedi.me, SeeIP, icanhazip, IP.SB and live reserve-tier IPPubblico;
 - **Repeated IP sampling:** ipify, ident.me/tnedi.me and SeeIP;
-- **GeoIP:** ipapi.co, ipwho.is, FreeIPAPI and ipapi.is;
+- **GeoIP:** ipapi.co, ipwho.is, FreeIPAPI, ipapi.is and IPv4-only Sypex Geo RU;
 - **Network intelligence:** ipapi.is;
 - **PTR/DoH:** Cloudflare and Google;
 - **STUN:** Cloudflare, Google and Twilio;
@@ -268,11 +274,14 @@ All endpoints and timeouts are configured in `assets/config.js` so they can late
 
 ## Provider smoke utility
 
-A non-production helper is included for checking response payloads and CORS headers:
+Non-production helpers are included for checking response payloads and CORS headers:
 
 ```bash
 node scripts/check-ip-provider-cors.mjs --origin=https://pigalev.github.io
+node scripts/check-ru-provider-cors.mjs --origin=https://pigalev.github.io
 ```
+
+The RU activation smoke accepted `ru.sxgeo.city` for **IPv4 GeoIP-only** (`HTTP 200`, readable `Access-Control-Allow-Origin: *`, parseable JSON) and rejected the tested IP-API.RU self-IP candidate for production Core because the smoke did not provide browser-readable CORS/payload compatibility; its documented demo rate profile is also unsuitable for an always-on public Core source.
 
 The helper is intentionally **not** part of permanent CI because third-party network reachability would make normal repository tests flaky. GitHub-hosted runners may also lack IPv6 connectivity, so an IPv6 transport failure in this smoke environment is not by itself evidence that an IPv6 provider is broken for end users.
 

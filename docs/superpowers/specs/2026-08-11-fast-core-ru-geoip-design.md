@@ -442,3 +442,12 @@ The feature is successful when:
 - IPPubblico documentation currently advertises browser/CORS support, so the product should prefer a real per-user browser attempt over a permanent global quarantine based on one external runner observation.
 - IP.SB documents a public API intended for direct requests and remains a Core candidate; observed per-network timeouts are handled by early completion/global deadlines rather than by treating one failure as globally fatal.
 - RU provider additions remain activation-gated by real browser-readable evidence rather than documentation assumptions alone.
+
+
+# 14. Activation outcome (implementation evidence)
+
+A one-shot networked smoke was executed with origin `https://pigalev.github.io`.
+
+- **IP-API.RU self-IP candidate:** rejected for production. The smoke returned HTTP 200 but no readable CORS permission and the tested payload did not satisfy the expected self-IP parser. Its demo rate profile is also unsuitable for an always-on public Core source.
+- **Sypex Geo RU:** accepted for **IPv4 GeoIP-only**. The smoke returned HTTP 200, `Access-Control-Allow-Origin: *`, parseable JSON, and usable country data. Production config marks this provider `families:[4]`, so IPv6 GeoIP does not wait for it.
+- **IPPubblico:** remains a live browser-attempted reserve-tier Core source. User-network success/failure is evaluated per run rather than inferred globally from the earlier GitHub-runner CORS observation.

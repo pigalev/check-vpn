@@ -7,8 +7,10 @@ function reserveUnavailable(ip) {
 }
 
 function sourceText(ip) {
+  const confidence = ip?.confidence;
+  if (confidence === 'no-consensus') return 'No consensus · review source details';
+  if (confidence === 'unavailable') return 'Unavailable · no source confirmed this family';
   if (!ip?.agreement) return ip?.address ? 'Checking…' : null;
-  const confidence = ip.confidence;
   const available = ip.agreement.available ?? 0;
   const selectedVotes = ip.agreement.selectedVotes ?? (ip.address ? (ip.agreement.counts?.[ip.address] ?? available) : 0);
   const primaryAvailable = ip.primary?.available ?? available;
@@ -22,8 +24,6 @@ function sourceText(ip) {
   if (confidence === 'partial') {
     return `Partial · ${selectedVotes || available} sources agree${reserveUnavailable(ip) ? ' · reserve unavailable' : ''}`;
   }
-  if (confidence === 'no-consensus') return 'No consensus · review source details';
-  if (confidence === 'unavailable') return 'Unavailable · no source confirmed this family';
   return `${available}/${ip.agreement.total ?? 0} sources${ip.agreement.agree ? ' · agree' : ' · differ'}`;
 }
 

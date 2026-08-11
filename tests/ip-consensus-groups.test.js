@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runIpConsensus } from '../assets/ip-consensus.js';
+import { runIpConsensus, runIpConsensusProgressive } from '../assets/ip-consensus.js';
 
 function text(value) {
   return { ok: true, status: 200, text: async () => value, json: async () => ({ ip: value.trim() }) };
@@ -26,6 +26,35 @@ function fixtureFetch(values, calls = []) {
     if (value == null) throw new TypeError('offline');
     return text(value);
   };
+}
+
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+function hangingFetch(values, calls = [], aborted = []) {
+  return async (url, options = {}) => {
+    calls.push(url);
+    const host = new URL(url).hostname.split('.')[0];
+    const value = values[host];
+    if (value === 'hang') {
+      return new Promise((_resolve, reject) => {
+        const onAbort = () => {
+          aborted.push(host);
+          reject(options.signal?.reason instanceof Error ? options.signal.reason : new DOMException('Aborted', 'AbortError'));
+        };
+        if (options.signal?.aborted) onAbort();
+        else options.signal?.addEventListener('abort', onAbort, { once:true });
+      });
+    }
+    if (value instanceof Error) throw value;
+    if (value == null) throw new TypeError('offline');
+    return text(value);
+  };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((res) => { resolve = res; });
+  return { promise, resolve };
 }
 
 test('5-0 primary is strong and reserve is not called', async () => {
@@ -189,4 +218,60 @@ test('disabled reserve is never fetched and never inflates agreement totals', as
   assert.equal(result.reserve.sources[0].status, 'disabled');
   assert.match(result.reserve.sources[0].error, /CORS/i);
   assert.ok(!calls.some((url) => url.includes('reserve.test')));
+});
+
+test('4 equal of 6 finishes before two pending groups settle and marks them not-needed', async () => {
+  const aborted = [];
+  const run = runIpConsensusProgressive({
+    family:4,
+    primaryGroups:['a','b','c','d','e','f'].map((id) => group(id)),
+    reserveGroups:[],
+    timeoutMs:500,
+    fetchImpl:hangingFetch({ a:'31.76.17.233', b:'31.76.17.233', c:'31.76.17.233', d:'31.76.17.233', e:'hang', f:'hang' }, [], aborted)
+  });
+  const first = await Promise.race([run, sleep(80).then(() => 'still-pending')]);
+  assert.notEqual(first, 'still-pending');
+  assert.equal(first.confidence, 'strong');
+  assert.equal(first.address, '31.76.17.233');
+  assert.equal(first.agreement.available, 4);
+  assert.equal(first.sources.filter((source) => source.status === 'not-needed').length, 2);
+  assert.ok(first.sources.filter((source) => source.status === 'not-needed').every((source) => /guaranteed/i.test(source.error)));
+  assert.deepEqual(new Set(aborted), new Set(['e','f']));
+});
+
+test('3 equal of 5 does not early finish while two groups are pending', async () => {
+  const e = deferred();
+  const f = deferred();
+  const fetchImpl = async (url) => {
+    const host = new URL(url).hostname.split('.')[0];
+    if (['a','b','c'].includes(host)) return text('31.76.17.233');
+    if (host === 'd') return e.promise;
+    if (host === 'e') return f.promise;
+    throw new TypeError('offline');
+  };
+  const run = runIpConsensusProgressive({
+    family:4,
+    primaryGroups:['a','b','c','d','e'].map((id) => group(id)),
+    reserveGroups:[], timeoutMs:500, fetchImpl
+  });
+  const early = await Promise.race([run, sleep(40).then(() => 'still-pending')]);
+  assert.equal(early, 'still-pending');
+  e.resolve(text('203.0.113.8'));
+  f.resolve(text('203.0.113.8'));
+  const final = await run;
+  assert.equal(final.confidence, 'no-consensus');
+  assert.equal(final.address, null);
+});
+
+test('one settled provider failure does not count against a safe 3-of-4 guarantee', async () => {
+  const aborted = [];
+  const result = await runIpConsensusProgressive({
+    family:4,
+    primaryGroups:['a','b','c','d','e'].map((id) => group(id)),
+    reserveGroups:[], timeoutMs:500,
+    fetchImpl:hangingFetch({ a:'31.76.17.233', b:'31.76.17.233', c:'31.76.17.233', d:new TypeError('offline'), e:'hang' }, [], aborted)
+  });
+  assert.equal(result.confidence, 'strong');
+  assert.equal(result.agreement.available, 3);
+  assert.ok(aborted.includes('e'));
 });

@@ -176,9 +176,13 @@ function legacyAgree(state) {
   return state === 'agree' ? true : state === 'disagree' ? false : null;
 }
 
+function countryValue(result) {
+  return result.countryCode ?? result.country ?? null;
+}
+
 function locationTuple(result) {
-  if (!result.countryCode && !result.country && !result.city && !result.region) return null;
-  return [result.countryCode ?? result.country ?? '', result.city ?? '', result.region ?? '']
+  if (!result.city && !result.region) return null;
+  return [result.city ?? '', result.region ?? '']
     .map((value) => String(value).trim().toLowerCase())
     .join('|');
 }
@@ -195,9 +199,9 @@ function metadataTuple(result) {
 }
 
 function agreementFor(successful, total) {
-  const countryCodes = successful.map((result) => result.countryCode).filter(Boolean);
+  const countries = successful.map(countryValue).filter(Boolean);
   const locations = successful.map(locationTuple).filter(Boolean);
-  const countryState = evidenceState(countryCodes);
+  const countryState = evidenceState(countries);
   const locationState = evidenceState(locations);
   return {
     available: successful.length,

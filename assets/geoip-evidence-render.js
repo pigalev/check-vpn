@@ -11,8 +11,10 @@ function add(parent, tag, value, className = '') {
 function stateLabel(state) {
   return state === 'agree' ? 'Agree'
     : state === 'single-source' ? 'Single source'
-      : state === 'disagree' ? 'Disagree'
-        : 'Unavailable';
+      : state === 'majority' ? 'Majority'
+        : state === 'unresolved' ? 'Unresolved'
+          : state === 'disagree' ? 'Disagree'
+            : 'Unavailable';
 }
 
 function relationLabel(label, relation) {
@@ -38,6 +40,13 @@ function providerValue(row) {
   return { country, location, timezone };
 }
 
+function voteText(vote) {
+  if (!vote || !vote.usable) return 'No usable data';
+  const counts = Array.isArray(vote.counts) ? vote.counts : [];
+  if (!counts.length) return 'No usable data';
+  return counts.map((item) => `${item.label} ${item.votes}/${vote.usable}`).join(' · ');
+}
+
 export function renderGeoIpEvidence(parent, result) {
   if (!parent || !result) return null;
   const view = buildGeoIpEvidence(result);
@@ -48,11 +57,19 @@ export function renderGeoIpEvidence(parent, result) {
   const overview = document.createElement('div');
   overview.className = 'detail-list geoip-evidence-overview';
   overviewRow(overview, 'Selected IP', view.selectedIp ?? 'Unavailable');
-  overviewRow(overview, 'Responded providers', `${view.responded}/${view.total}`);
+  overviewRow(overview, 'Providers reached', `${view.reached}/${view.total}`);
+  overviewRow(overview, 'Usable country data', `${view.usableCountry}/${view.total}`);
   overviewRow(overview, 'Country state', stateLabel(view.countryState));
+  overviewRow(overview, 'Country vote', voteText(view.countryVote));
+  overviewRow(overview, 'Usable location data', `${view.usableLocation}/${view.total}`);
   overviewRow(overview, 'Location state', stateLabel(view.locationState));
-  overviewRow(overview, 'Selected country', view.selectedCountry ?? 'Unavailable');
-  overviewRow(overview, 'Selected location', view.selectedLocation ?? 'Unavailable');
+  overviewRow(overview, 'Location vote', voteText(view.locationVote));
+  overviewRow(overview, 'Usable timezone data', `${view.usableTimezone}/${view.total}`);
+  overviewRow(overview, 'Timezone state', stateLabel(view.timezoneState));
+  overviewRow(overview, 'Timezone vote', voteText(view.timezoneVote));
+  overviewRow(overview, 'Selected country', view.selectedCountry ?? 'Unresolved');
+  overviewRow(overview, 'Selected location', view.selectedLocation ?? 'Unresolved');
+  overviewRow(overview, 'Selected timezone', view.selectedTimezone ?? 'Unresolved');
   section.append(overview);
 
   const list = document.createElement('div');

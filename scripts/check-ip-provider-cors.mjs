@@ -24,6 +24,7 @@ for (const group of ipProviderSmokeCandidates) {
       group: group.group,
       label: group.label,
       tier: group.tier,
+      configuredEnabled: group.enabled !== false,
       family: group.family,
       endpointId: endpoint.id,
       url: endpoint.url,
@@ -38,6 +39,7 @@ for (const group of ipProviderSmokeCandidates) {
       const response = await fetch(endpoint.url, {
         headers: {
           Origin: origin,
+          'User-Agent': 'Mozilla/5.0 check-vpn provider smoke',
           ...(endpoint.kind === 'text' ? {} : { Accept: 'application/json' })
         },
         redirect: 'follow'
@@ -60,4 +62,4 @@ for (const group of ipProviderSmokeCandidates) {
   }
 }
 
-if (strict && rows.some((row) => !row.ok)) process.exitCode = 1;
+if (strict && rows.some((row) => row.configuredEnabled && !row.ok)) process.exitCode = 1;

@@ -1,7 +1,7 @@
 import { appConfig, features, networkConfig } from './config.js';
 import { runIpConsensus, runIpConsensusProgressive } from './ip-consensus.js';
 import { runGeoIpConsensus, runGeoIpConsensusProgressive } from './geoip.js';
-import { countryCodeToFlagUrl } from './country.js';
+import { buildCountryFlagPresentation } from './country.js';
 import { describeCandidate, runWebRtcTest, summarizeWebRtcPrivacy } from './webrtc-test.js';
 import { collectBrowserInfo } from './browser-info.js';
 import { assessPrivacy } from './privacy-assessment.js';
@@ -122,10 +122,16 @@ function summaryRows(parent, entries) {
 
 function locationNode(geo) {
   const wrapper = document.createElement('span'); wrapper.className = 'location-value';
-  const url = countryCodeToFlagUrl(geo?.countryCode);
-  if (url) {
-    const img = document.createElement('img'); img.className = 'country-flag'; img.src = url; img.alt = ''; img.width = 20; img.height = 15;
-    img.addEventListener('error', () => img.remove(), { once: true }); wrapper.append(img);
+  const presentation = buildCountryFlagPresentation(geo?.countryCode);
+  if (presentation.imageUrl || presentation.emoji) {
+    const slot = document.createElement('span'); slot.className = 'country-flag-slot';
+    const emoji = document.createElement('span'); emoji.className = 'country-flag-emoji'; emoji.textContent = presentation.emoji; emoji.hidden = Boolean(presentation.imageUrl);
+    if (presentation.imageUrl) {
+      const img = document.createElement('img'); img.className = 'country-flag'; img.src = presentation.imageUrl; img.alt = ''; img.width = 20; img.height = 15;
+      img.addEventListener('error', () => { img.remove(); emoji.hidden = !presentation.emoji; }, { once: true });
+      slot.append(img);
+    }
+    slot.append(emoji); wrapper.append(slot);
   }
   const value = document.createElement('span');
   const place = [geo?.city, geo?.region].filter(Boolean).join(', ');
@@ -163,7 +169,9 @@ function renderConnection(ipv4, ipv6, assessment = currentReport?.assessment ?? 
     text(connectionBody, primary.address, 'connection-address');
     if (primary.locationState === 'available') {
       const line = document.createElement('div'); line.className = 'connection-location'; line.append(locationNode(primaryIp?.geo)); connectionBody.append(line);
+      if (primary.locationDisagreement) text(connectionBody, 'GeoIP providers disagree', 'connection-location-warning');
     } else if (primary.locationState === 'locating') text(connectionBody, 'Locating…', 'connection-meta');
+    else if (primary.locationState === 'unavailable') text(connectionBody, 'Location unavailable', 'connection-meta');
     if (primary.network) text(connectionBody, primary.network, 'connection-meta');
   }
 

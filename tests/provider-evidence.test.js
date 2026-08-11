@@ -2,65 +2,91 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildIpProviderEvidence } from '../assets/provider-evidence.js';
 
-test('different successful public IP is labeled differs', () => {
-  const view = buildIpProviderEvidence({
+function baseResult(overrides = {}) {
+  return {
+    family:4,
+    confidence:'strong',
     address:'128.71.33.91',
-    agreement:{ available:3,total:3,agree:false,counts:{'128.71.33.91':2,'128.71.35.12':1} },
-    sources:[
-      {id:'a',label:'ipify',status:'complete',address:'128.71.33.91',latencyMs:182},
-      {id:'b',label:'IPPubblico',status:'complete',address:'128.71.33.91',latencyMs:241},
-      {id:'c',label:'ipwho.is',status:'complete',address:'128.71.35.12',latencyMs:390}
-    ]
-  });
-  assert.equal(view.selectedVotes, 2);
-  assert.equal(view.majority, true);
-  assert.equal(view.differentValues, 1);
-  assert.equal(view.sources[2].relation, 'differs');
-  assert.equal(view.sources[2].address, '128.71.35.12');
+    agreement:{ available:5,total:5,agree:false,counts:{'128.71.33.91':4,'128.71.35.12':1},selectedVotes:4,winningShare:0.8 },
+    primary:{ available:5,total:5,sources:[] },
+    reserve:{ used:false,sources:[{id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,attempts:[]}] },
+    sources:[],
+    ...overrides
+  };
+}
+
+test('strong majority reports one differing group without counting it unavailable', () => {
+  const primary = [
+    {id:'a',group:'a',label:'ipify',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:182,attempts:[]},
+    {id:'b',group:'b',label:'ident.me',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:241,attempts:[]},
+    {id:'c',group:'c',label:'SeeIP',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:260,attempts:[]},
+    {id:'d',group:'d',label:'icanhazip',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:300,attempts:[]},
+    {id:'e',group:'e',label:'MyIP',tier:'primary',status:'complete',address:'128.71.35.12',latencyMs:390,attempts:[]}
+  ];
+  const result = baseResult({ primary:{available:5,total:5,sources:primary}, sources:[...primary, ...baseResult().reserve.sources] });
+  const view = buildIpProviderEvidence(result);
+  assert.equal(view.confidence, 'strong');
+  assert.equal(view.primary.rows[4].relation, 'differs');
+  assert.equal(view.primary.rows.filter((row) => row.relation === 'unavailable').length, 0);
+  assert.match(view.summary, /Strong consensus/);
 });
 
-test('unavailable provider is not disagreement', () => {
-  const view = buildIpProviderEvidence({
-    address:'128.71.33.91',
-    agreement:{ available:2,total:3,agree:true,counts:{'128.71.33.91':2} },
-    sources:[
-      {id:'a',label:'ipify',status:'complete',address:'128.71.33.91',latencyMs:182},
-      {id:'b',label:'IPPubblico',status:'complete',address:'128.71.33.91',latencyMs:241},
-      {id:'c',label:'ipwho.is',status:'unavailable',address:null,latencyMs:6001,error:'Request timed out'}
+test('reserve not needed stays visible and is excluded from vote totals', () => {
+  const reserve = {id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,attempts:[]};
+  const view = buildIpProviderEvidence(baseResult({ reserve:{used:false,sources:[reserve]}, sources:[reserve] }));
+  assert.equal(view.reserve.used, false);
+  assert.equal(view.reserve.rows[0].relation, 'not-needed');
+  assert.equal(view.successful, 5);
+  assert.equal(view.total, 5);
+});
+
+test('reserve used shows its address and relation', () => {
+  const reserve = {id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'complete',address:'128.71.33.91',latencyMs:440,attempts:[]};
+  const view = buildIpProviderEvidence(baseResult({
+    agreement:{ available:6,total:6,agree:false,counts:{'128.71.33.91':4,'128.71.35.12':2},selectedVotes:4,winningShare:4/6 },
+    reserve:{used:true,sources:[reserve]}, sources:[reserve]
+  }));
+  assert.equal(view.reserve.used, true);
+  assert.equal(view.reserve.rows[0].relation, 'agrees');
+  assert.match(view.summary, /reserve used/i);
+});
+
+test('ident fallback preserves primary failure and mirror success attempts', () => {
+  const ident = {
+    id:'ident4',group:'ident',label:'ident.me',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:420,endpointId:'ident-mirror',
+    attempts:[
+      {endpointId:'ident-primary',status:'unavailable',address:null,latencyMs:200,error:'offline'},
+      {endpointId:'ident-mirror',status:'complete',address:'128.71.33.91',latencyMs:220,error:null}
     ]
+  };
+  const view = buildIpProviderEvidence(baseResult({ primary:{available:1,total:1,sources:[ident]}, sources:[ident] }));
+  assert.equal(view.primary.rows[0].attempts.length, 2);
+  assert.equal(view.primary.rows[0].endpointId, 'ident-mirror');
+});
+
+test('no-consensus has no selected address and successful rows are observed, not fake agrees/differs', () => {
+  const primary = [
+    {id:'a',group:'a',label:'A',tier:'primary',status:'complete',address:'203.0.113.1',latencyMs:100,attempts:[]},
+    {id:'b',group:'b',label:'B',tier:'primary',status:'complete',address:'203.0.113.2',latencyMs:120,attempts:[]}
+  ];
+  const result = baseResult({
+    confidence:'no-consensus', address:null,
+    agreement:{available:2,total:2,agree:false,counts:{'203.0.113.1':1,'203.0.113.2':1},selectedVotes:1,winningShare:0.5},
+    primary:{available:2,total:2,sources:primary}, reserve:{used:false,sources:[]}, sources:primary
   });
-  assert.equal(view.sources[2].relation, 'unavailable');
+  const view = buildIpProviderEvidence(result);
+  assert.equal(view.selectedAddress, null);
+  assert.match(view.summary, /No consensus/);
+  assert.deepEqual(view.primary.rows.map((row) => row.relation), ['observed','observed']);
+});
+
+test('unavailable group is not disagreement', () => {
+  const source = {id:'a',group:'a',label:'A',tier:'primary',status:'unavailable',address:null,latencyMs:6001,error:'timeout',attempts:[]};
+  const result = baseResult({
+    confidence:'partial', address:'128.71.33.91', agreement:{available:2,total:3,agree:true,counts:{'128.71.33.91':2},selectedVotes:2,winningShare:1},
+    primary:{available:2,total:3,sources:[source]}, sources:[source]
+  });
+  const view = buildIpProviderEvidence(result);
+  assert.equal(view.primary.rows[0].relation, 'unavailable');
   assert.equal(view.differentValues, 0);
-  assert.match(view.summary, /2 of 2 successful sources agree/i);
-});
-
-test('tie explicitly says there was no majority and retains alternative', () => {
-  const view = buildIpProviderEvidence({
-    address:'203.0.113.1',
-    agreement:{ available:2,total:3,agree:false,counts:{'203.0.113.1':1,'203.0.113.2':1} },
-    sources:[
-      {id:'a',label:'A',status:'complete',address:'203.0.113.1',latencyMs:100},
-      {id:'b',label:'B',status:'complete',address:'203.0.113.2',latencyMs:120},
-      {id:'c',label:'C',status:'unavailable',address:null,latencyMs:6000,error:'timeout'}
-    ]
-  });
-  assert.equal(view.tied, true);
-  assert.equal(view.majority, false);
-  assert.match(view.summary, /No majority/i);
-  assert.equal(view.sources.find((row) => row.address === '203.0.113.2').relation, 'differs');
-});
-
-test('all successful sources agreeing reports selected consensus cleanly', () => {
-  const view = buildIpProviderEvidence({
-    address:'203.0.113.4',
-    agreement:{ available:3,total:3,agree:true,counts:{'203.0.113.4':3} },
-    sources:[
-      {id:'a',label:'A',status:'complete',address:'203.0.113.4',latencyMs:100},
-      {id:'b',label:'B',status:'complete',address:'203.0.113.4',latencyMs:120},
-      {id:'c',label:'C',status:'complete',address:'203.0.113.4',latencyMs:140}
-    ]
-  });
-  assert.equal(view.selectedVotes, 3);
-  assert.equal(view.differentValues, 0);
-  assert.match(view.summary, /3 of 3 successful sources agree/i);
 });

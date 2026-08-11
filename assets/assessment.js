@@ -1,3 +1,5 @@
+import { reasonForGeoState, reasonForIpConsensus } from './diagnostic-reasons.js';
+
 function dedupe(findings) {
   const map = new Map();
   for (const finding of findings) if (finding?.id && !map.has(finding.id)) map.set(finding.id, finding);
@@ -10,11 +12,26 @@ function authoritativeAddress(result) {
   return ['strong', 'partial'].includes(result.confidence) ? result.address : null;
 }
 
-function geoCountryDisagrees(result) {
-  const agreement = result?.geo?.agreement;
-  if (!agreement) return false;
-  if (agreement.countryState) return agreement.countryState === 'disagree';
-  return agreement.countryAgree === false;
+function distinct(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function legacyState(explicitState, legacyAgree) {
+  if (explicitState) return explicitState;
+  if (legacyAgree === true) return 'agree';
+  if (legacyAgree === false) return 'disagree';
+  return null;
+}
+
+function geoReasonContext(result) {
+  const geo = result?.geo;
+  if (!geo?.agreement) return null;
+  const successful = (geo.sources ?? []).filter((source) => source?.status === 'complete');
+  const countryState = legacyState(geo.agreement.countryState, geo.agreement.countryAgree);
+  const locationState = legacyState(geo.agreement.locationState, geo.agreement.locationAgree);
+  const countries = distinct(successful.map((source) => source.country ?? source.countryCode));
+  const locations = distinct(successful.map((source) => [source.city, source.region].filter(Boolean).join(', ')));
+  return { family:result.family, countryState, locationState, countries, locations };
 }
 
 export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [], monitorFindings = [], aggressiveFindings = [], guidedFindings = [] }) {
@@ -27,18 +44,13 @@ export function assessResults({ ipv4, ipv6, webrtc, privacy, networkFindings = [
 
   for (const result of [ipv4, ipv6]) {
     if (result?.confidence === 'no-consensus') {
-      findings.push({
-        id: `ipv${result.family}-no-consensus`,
-        severity: 'review',
-        category: 'ip',
-        summary: `IPv${result.family} public IP could not reach consensus`,
-        details: 'Independent public-IP groups did not establish a sufficiently strong winner.',
-        sources: ['http-ip']
-      });
+      findings.push(...reasonForIpConsensus({ family:result.family, confidence:result.confidence }));
     } else if (!result?.confidence && result?.agreement?.agree === false) {
       findings.push({ id: `ipv${result.family}-source-disagreement`, severity: 'review', category: 'ip', summary: `IPv${result.family} providers disagree`, details: 'Independent public-IP sources returned different addresses.', sources: ['http-ip'] });
     }
-    if (geoCountryDisagrees(result)) findings.push({ id: `ipv${result.family}-geo-country-disagreement`, severity: 'review', category: 'geoip', summary: `IPv${result.family} GeoIP country disagreement`, details: 'GeoIP providers returned different countries.', sources: ['geoip'] });
+
+    const geoContext = geoReasonContext(result);
+    if (geoContext) findings.push(...reasonForGeoState(geoContext));
   }
 
   const unique = dedupe(findings);

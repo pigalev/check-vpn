@@ -1,4 +1,5 @@
 import { fetchJsonWithTimeout } from './network.js';
+import { buildCountryAliases, countryEvidenceKey } from './geoip-country.js';
 
 function cleanString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -119,18 +120,29 @@ export function normalizeGeoIp(payload, expectedIp, kind = 'ipapi', source = {})
   };
 }
 
-export async function runGeoIpProviderLookup({ ip, provider, timeoutMs, fetchImpl = fetch }) {
+export async function runGeoIpProviderLookup({
+  ip,
+  provider,
+  timeoutMs,
+  fetchImpl = fetch,
+  now = () => performance.now?.() ?? Date.now()
+}) {
+  const startedAt = now();
+  const elapsed = () => Math.max(0, Math.round(now() - startedAt));
   try {
     const payload = await fetchJsonWithTimeout(buildGeoIpUrl(provider.urlTemplate, ip), { timeoutMs, fetchImpl });
-    return normalizeGeoIp(payload, ip, provider.kind, provider);
+    return { ...normalizeGeoIp(payload, ip, provider.kind, provider), latencyMs:elapsed() };
   } catch (error) {
     const unavailable = error?.name === 'AbortError' || error instanceof TypeError;
-    return emptyResult(
-      ip,
-      unavailable ? 'unavailable' : 'error',
-      unavailable ? 'Location unavailable.' : 'Location lookup failed.',
-      provider
-    );
+    return {
+      ...emptyResult(
+        ip,
+        unavailable ? 'unavailable' : 'error',
+        unavailable ? 'Location unavailable.' : 'Location lookup failed.',
+        provider
+      ),
+      latencyMs:elapsed()
+    };
   }
 }
 
@@ -166,8 +178,8 @@ function legacyAgree(state) {
 }
 
 function locationTuple(result) {
-  if (!result.countryCode && !result.country && !result.city && !result.region) return null;
-  return [result.countryCode ?? result.country ?? '', result.city ?? '', result.region ?? '']
+  if (!result.city && !result.region) return null;
+  return [result.city ?? '', result.region ?? '']
     .map((value) => String(value).trim().toLowerCase())
     .join('|');
 }
@@ -184,9 +196,10 @@ function metadataTuple(result) {
 }
 
 function agreementFor(successful, total) {
-  const countryCodes = successful.map((result) => result.countryCode).filter(Boolean);
+  const aliases = buildCountryAliases(successful);
+  const countries = successful.map((result) => countryEvidenceKey(result, aliases)).filter(Boolean);
   const locations = successful.map(locationTuple).filter(Boolean);
-  const countryState = evidenceState(countryCodes);
+  const countryState = evidenceState(countries);
   const locationState = evidenceState(locations);
   return {
     available: successful.length,

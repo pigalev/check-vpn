@@ -72,6 +72,46 @@ test('actual GeoIP country disagreement still creates Review', () => {
   assert.equal(result.status, 'review');
 });
 
+test('same country but different location stays Protected with info reason', () => {
+  const ipv4 = {
+    ...completeIp(4,'203.0.113.10'),
+    geo:{
+      status:'complete', countryCode:'DE', country:'Germany', city:'Neu-Isenburg', region:'Hesse',
+      agreement:{countryState:'agree',locationState:'disagree'},
+      sources:[
+        {status:'complete',country:'Germany',countryCode:'DE',city:'Neu-Isenburg',region:'Hesse'},
+        {status:'complete',country:'Germany',countryCode:'DE',city:'Frankfurt am Main',region:'Hesse'}
+      ]
+    }
+  };
+  const result = assessResults({ ipv4, ipv6:unavailable6, webrtc:rtc('203.0.113.10') });
+  assert.equal(result.status, 'protected');
+  const info = result.findings.find((item) => item.code === 'GEO_LOCATION_DISAGREEMENT');
+  assert.equal(info?.severity, 'info');
+  assert.match(info?.details ?? '', /Neu-Isenburg/);
+  assert.match(info?.details ?? '', /Frankfurt/);
+});
+
+test('country disagreement is Review with a stable reason code and evidence', () => {
+  const ipv4 = {
+    ...completeIp(4,'203.0.113.10'),
+    geo:{
+      status:'complete', countryCode:'DE', country:'Germany', city:'Neu-Isenburg', region:'Hesse',
+      agreement:{countryState:'disagree',locationState:'disagree'},
+      sources:[
+        {status:'complete',country:'Germany',countryCode:'DE',city:'Neu-Isenburg',region:'Hesse'},
+        {status:'complete',country:'Russia',countryCode:'RU',city:'Moscow',region:'Moscow'}
+      ]
+    }
+  };
+  const result = assessResults({ ipv4, ipv6:unavailable6, webrtc:rtc('203.0.113.10') });
+  assert.equal(result.status, 'review');
+  const finding = result.findings.find((item) => item.code === 'GEO_COUNTRY_DISAGREEMENT');
+  assert.ok(finding);
+  assert.match(finding.details, /Germany/);
+  assert.match(finding.details, /Russia/);
+});
+
 test('qualifies incomplete results', () => {
   const result = assessResults({ ipv4:{status:'unavailable',confidence:'unavailable',family:4,address:null,error:null}, ipv6:unavailable6, webrtc:{status:'unavailable',publicAddresses:[],candidates:[],error:null} });
   assert.equal(result.status, 'incomplete');

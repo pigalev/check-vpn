@@ -171,3 +171,22 @@ test('ident primary failure and mirror success casts exactly one group vote', as
   assert.equal(result.agreement.counts['203.0.113.1'], 3);
   assert.equal(result.sources.filter((source) => source.group === 'ident').length, 1);
 });
+
+test('disabled reserve is never fetched and never inflates agreement totals', async () => {
+  const calls = [];
+  const disabled = { ...group('reserve', 'reserve'), enabled:false, disabledReason:'Browser CORS unavailable' };
+  const result = await runIpConsensus({
+    family:4,
+    primaryGroups:[group('a'), group('b')],
+    reserveGroups:[disabled],
+    timeoutMs:100,
+    fetchImpl:fixtureFetch({ a:'203.0.113.1', b:'203.0.113.1', reserve:'203.0.113.1' }, calls)
+  });
+  assert.equal(result.confidence, 'partial');
+  assert.equal(result.agreement.available, 2);
+  assert.equal(result.agreement.total, 2);
+  assert.equal(result.reserve.used, true);
+  assert.equal(result.reserve.sources[0].status, 'disabled');
+  assert.match(result.reserve.sources[0].error, /CORS/i);
+  assert.ok(!calls.some((url) => url.includes('reserve.test')));
+});

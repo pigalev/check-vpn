@@ -32,16 +32,17 @@ Target primary groups:
 
 A provider is active in the deployed static application only after a real browser cross-origin request from the GitHub Pages origin has been verified to return a readable response for the intended family. Documentation claiming an API exists is not enough; browser CORS compatibility is a hard activation gate.
 
-`MyIP` and any other newly introduced provider therefore remain config candidates until this browser-CORS smoke test succeeds. If one candidate fails the browser test, the design still ships with the remaining verified independent groups rather than adding JSONP, `no-cors`, an embedded token, or HTML scraping.
+New providers such as `SeeIP` and `MyIP` therefore remain config candidates until this browser-CORS smoke test succeeds. If one candidate fails the browser test, the design still ships with the remaining verified independent groups rather than adding JSONP, `no-cors`, an embedded token, or HTML scraping.
 
 ### Core reserve tier
 
 `IPPubblico` remains configured as a reserve independent provider group.
 
-It is not called during every healthy Core run. It is attempted only when the primary tier cannot establish a sufficiently trustworthy result, specifically when either:
+It is not called during every healthy Core run. It is attempted only when the primary tier cannot establish sufficiently strong evidence, specifically when any of these are true:
 
-- fewer than 3 independent primary groups return a valid address for that family; or
-- the successful primary groups do not produce a strict majority address.
+- fewer than 3 independent primary groups return a valid address for that family;
+- the successful primary groups do not produce a strict majority address; or
+- a majority exists but the winning address has less than two-thirds of successful primary votes, for example `3-2`.
 
 A reserve result participates as one additional independent group vote. If it fails, its failure is preserved as provider evidence but does not erase successful primary data.
 
@@ -146,51 +147,56 @@ For a family:
 - `successfulGroups` = independent groups that returned a valid same-family public address;
 - `counts[address]` = number of successful groups that returned that address;
 - `winner` = address with the largest count;
+- `winnerShare` = winner count divided by all successful group votes;
 - `strictMajority` = winner count is greater than half of all successful group votes;
+- `strongMajority` = winner share is at least two-thirds;
 - `unanimous` = all successful groups returned the same address.
 
 ### Confidence states
 
 #### Strong consensus
 
-Requirements:
+Requirements after applicable reserve attempts:
 
-- at least 3 successful independent groups; and
-- a strict majority exists.
+- at least 3 successful independent groups;
+- a strict majority exists; and
+- the winning address has at least two-thirds of successful votes.
 
 Examples:
 
-- 5 successful: `5-0`, `4-1`, `3-2` -> Strong consensus.
+- 5 successful: `5-0`, `4-1` -> Strong consensus.
+- 5 successful: `3-2` -> not Strong; reserve must be attempted.
 - 4 successful: `4-0`, `3-1` -> Strong consensus.
 - 3 successful: `3-0`, `2-1` -> Strong consensus.
 
-The winning address is authoritative for the final Core report.
+The winning address is authoritative for the final Core report only when these conditions are met.
 
 #### Partial
 
-There are one or two successful independent groups and they agree, but there is not enough independent evidence to call the result Strong.
+There are one or two successful independent groups and the available votes agree, but there is not enough independent evidence to call the result Strong.
 
-The address remains usable and visible, but UI/report confidence is Partial.
+The address remains usable and visible with explicitly reduced confidence.
 
-The reserve tier is attempted before finalizing this state.
+The reserve tier is attempted before finalizing Partial.
 
 #### No consensus
 
-Multiple successful independent groups exist but no strict majority exists.
+There are multiple successful independent groups but the final evidence does not satisfy Strong consensus.
 
-Examples:
+Typical cases:
 
 - `1-1`
 - `2-2`
 - `1-1-1`
+- unresolved `3-2` after the reserve result fails or creates an equally weak outcome
 
 Reserve groups are attempted before finalizing No consensus.
 
-If reserve creates a strict majority with at least 3 successful independent groups, the result becomes Strong consensus.
+If reserve converts weak primary evidence into at least three successful votes with a two-thirds winning share, the result becomes Strong consensus.
 
-If there is still no strict majority after reserves, the final Core family result is `partial/no-consensus` rather than silently choosing the first successful provider as authoritative.
+If the evidence remains split after reserve attempts, the final Core family result is `no-consensus` rather than silently choosing the first successful provider as authoritative.
 
-This is an intentional change from the current tie behavior, which falls back to the first successful source. A tied result may still show all observed addresses in Advanced, but it must not pretend that one is the consensus winner.
+This is an intentional change from the current tie behavior, which falls back to the first successful source. A split result may still show every observed address in Advanced, but it must not pretend that one is the consensus winner.
 
 #### Unavailable
 
@@ -214,7 +220,7 @@ If the final winning address differs from the provisional address:
 - discard stale provisional GeoIP for display purposes;
 - resolve/reuse GeoIP for the final address using existing race protection.
 
-If final result is No consensus, the UI must not silently keep the first provisional value as if it were authoritative. It should show the best-known address state as requiring review/insufficient consensus while Advanced exposes all provider values.
+If the final result is No consensus, the UI must not silently keep the first provisional value as if it were authoritative. It should show that an address was observed but authoritative consensus was not established, while Advanced exposes all provider values.
 
 ## Reserve Trigger and Latency
 
@@ -234,13 +240,19 @@ Healthy example:
 IPv4   Strong consensus · 4/5 primary sources responded · 4 agree
 ```
 
-Primary disagreement with majority:
+Primary disagreement with strong majority:
 
 ```text
 IPv4   Strong consensus · 5/5 responded · 4 agree · 1 differs
 ```
 
-Reserve used:
+Weak majority requiring reserve:
+
+```text
+IPv4   Checking consensus · 3 agree · 2 differ · reserve requested
+```
+
+Reserve used successfully:
 
 ```text
 IPv4   Strong consensus · reserve used
@@ -252,13 +264,13 @@ Insufficient evidence:
 IPv4   Partial · 2 sources agree · reserve unavailable
 ```
 
-No winner:
+No authoritative winner:
 
 ```text
 IPv4   No consensus · review source details
 ```
 
-Absence of IPv6 remains `Not detected` only when the family check successfully determines that no IPv6 route/address is available. Provider/service failures should remain distinguishable from normal absence.
+For IPv6, `Not detected` means no verified IPv6-only Core provider produced a usable public IPv6 address during the completed family check. It does not claim absolute proof that IPv6 routing is impossible; Advanced must still show whether individual IPv6 providers timed out, failed, or returned the wrong family.
 
 ## Advanced Provider Evidence
 
@@ -308,6 +320,8 @@ A provider relation is calculated against the final selected address only when s
 
 `unavailable` never counts as disagreement.
 
+When final confidence is No consensus and there is no selected authoritative address, successful group rows are shown as observed alternatives rather than being labeled `agrees`/`differs` against a fake winner.
+
 ## Report Compatibility
 
 Existing consumers of `ipv4.address`, `ipv6.address`, `agreement`, and `sources` should remain compatible where possible.
@@ -332,7 +346,7 @@ For backward compatibility:
 - `agreement.agree` means all successful independent groups returned one value;
 - mirrors never inflate any of these counters.
 
-On a final No-consensus tie, `address` should be `null` rather than selecting the first provider. Raw successful addresses remain available in `sources/groups`.
+On final No consensus, `address` is `null`. Raw successful addresses remain available in `sources/groups`.
 
 This is a deliberate correctness change and requires regression review of downstream logic that currently assumes `status === complete` implies a non-null `address`.
 
@@ -388,29 +402,32 @@ A failed gate means the provider stays disabled. Do not work around the failure 
 Required regression coverage:
 
 1. five independent same-address groups -> Strong consensus;
-2. `4-1`, `3-2`, `3-1`, `2-1` majority cases -> Strong when at least 3 groups succeed;
-3. only two agreeing groups -> reserve triggered, then Partial if reserve fails;
-4. `2-2` tie -> reserve triggered;
-5. reserve breaks tie into majority -> Strong;
-6. reserve fails and tie remains -> No consensus with `address:null`;
-7. one successful group only -> reserve triggered, final Partial if still insufficient;
-8. zero successful groups -> Unavailable;
-9. ident primary fails and tnedi succeeds -> one successful ident group vote;
-10. ident primary and mirror can never cast two votes;
-11. wrong-family response is unavailable, never a vote;
-12. unavailable provider does not increment `different`;
-13. reserve `not needed` is visible as such in Advanced evidence;
-14. reserve invocation happens only when primary result is not Strong;
-15. first valid primary still renders progressively before final consensus;
-16. final winner replacing provisional address preserves stale-GeoIP race protection;
-17. No consensus never promotes the first provisional address to final authoritative report;
-18. core config and stress config are separate;
-19. Aggressive/Guided do not call IPPubblico/MyIP through the two-second stress loop;
-20. Guided minority Known Real provider observation behavior remains unchanged;
-21. provider-evidence counts groups, not endpoints;
-22. Copy JSON preserves compatible `sources/agreement` fields;
-23. WebRTC mismatch logic ignores a family without authoritative HTTP consensus;
-24. full existing leak-severity regression suite remains green.
+2. `4-1`, `3-1`, `2-1` -> Strong with at least 3 successful groups;
+3. `3-2` primary split -> reserve triggered because winner share is below two-thirds;
+4. `3-2` plus reserve agreeing with winner -> `4-2`, Strong consensus;
+5. `3-2` plus reserve agreeing with minority -> `3-3`, No consensus;
+6. only two agreeing groups -> reserve triggered, then Partial if total evidence is still below 3 groups;
+7. `2-2` tie -> reserve triggered;
+8. reserve breaks `2-2` into a still-sub-two-thirds `3-2` -> No consensus, not Strong;
+9. reserve fails and tie remains -> No consensus with `address:null`;
+10. one successful group only -> reserve triggered, final Partial if still insufficient;
+11. zero successful groups -> Unavailable;
+12. ident primary fails and tnedi succeeds -> one successful ident group vote;
+13. ident primary and mirror can never cast two votes;
+14. wrong-family response is unavailable, never a vote;
+15. unavailable provider does not increment `different`;
+16. reserve `not needed` is visible as such in Advanced evidence;
+17. reserve invocation happens only when primary result is not Strong;
+18. first valid primary still renders progressively before final consensus;
+19. final winner replacing provisional address preserves stale-GeoIP race protection;
+20. No consensus never promotes the first provisional address to final authoritative report;
+21. core config and stress config are separate;
+22. Aggressive/Guided do not call IPPubblico/MyIP through the two-second stress loop;
+23. Guided minority Known Real provider observation behavior remains unchanged;
+24. provider-evidence counts groups, not endpoints;
+25. Copy JSON preserves compatible `sources/agreement` fields;
+26. WebRTC mismatch logic ignores a family without authoritative HTTP consensus;
+27. full existing leak-severity regression suite remains green.
 
 ## Files Expected to Change
 

@@ -26,6 +26,7 @@ import { buildConnectionView, buildLeakView, buildPrivacyView, buildAdvancedRowV
 import { buildMonitorTestView } from './active-test-view.js';
 import { createPresentationTicker } from './presentation-ticker.js';
 import { renderIpProviderEvidence } from './provider-evidence-render.js';
+import { renderGeoIpEvidence } from './geoip-evidence-render.js';
 
 const runButton = document.querySelector('#run-tests');
 const copyButton = document.querySelector('#copy-json');
@@ -152,6 +153,10 @@ function connectionRowValue(entry) {
   return 'Not detected';
 }
 
+function noticeText(notice) {
+  return notice?.summary?.replace(/^IPv\d+\s+/, '') ?? null;
+}
+
 function renderConnection(ipv4, ipv6, assessment = currentReport?.assessment ?? null) {
   const view = buildConnectionView({ ipv4, ipv6, assessment });
   connectionBody.replaceChildren();
@@ -169,9 +174,15 @@ function renderConnection(ipv4, ipv6, assessment = currentReport?.assessment ?? 
     text(connectionBody, primary.address, 'connection-address');
     if (primary.locationState === 'available') {
       const line = document.createElement('div'); line.className = 'connection-location'; line.append(locationNode(primaryIp?.geo)); connectionBody.append(line);
-      if (primary.locationDisagreement) text(connectionBody, 'GeoIP providers disagree', 'connection-location-warning');
+      if (primary.geoNotice) {
+        text(
+          connectionBody,
+          noticeText(primary.geoNotice),
+          primary.geoNotice.severity === 'review' ? 'connection-location-warning' : 'connection-location-info'
+        );
+      }
     } else if (primary.locationState === 'locating') text(connectionBody, 'Locating…', 'connection-meta');
-    else if (primary.locationState === 'unavailable') text(connectionBody, 'Location unavailable', 'connection-meta');
+    else if (primary.locationState === 'unavailable') text(connectionBody, noticeText(primary.geoNotice) ?? 'Location unavailable', 'connection-meta');
     if (primary.network) text(connectionBody, primary.network, 'connection-meta');
   }
 
@@ -393,7 +404,7 @@ async function runCore() {
 
 function intelligenceRows(result) {
   if (result?.status !== 'complete') return [];
-  return [['ASN', result.asn], ['Organization', result.organization], ['Prefix', result.prefix], ['RIR', result.rir], ['Type', result.networkType], ['VPN', result.isVpn == null ? 'Unknown' : result.isVpn ? 'Detected' : 'No'], ['Proxy', result.isProxy == null ? 'Unknown' : result.isProxy ? 'Detected' : 'No'], ['Tor', result.isTor == null ? 'Unknown' : result.isTor ? 'Detected' : 'No'], ['Datacenter', result.isDatacenter == null ? 'Unknown' : result.isDatacenter ? 'Detected' : 'No'], ['Mobile', result.isMobile == null ? 'Unknown' : result.isMobile ? 'Yes' : 'No'], ['Abuse flag', result.isAbuser == null ? 'Unknown' : result.isAbuser ? 'Present' : 'No']];
+  return [['ASN', result.asn], ['Organization', result.organization], ['Prefix', result.prefix], ['RIR', result.rir], ['Type', result.networkType], ['VPN', result.isVpn == null ? 'Unknown' : result.isVpn ? 'Detected' : 'No'], ['Proxy', result.isProxy == null ? 'Unknown' : result.isProxy ? 'Detected' : 'No'], ['Tor', result.isTor == null ? 'Unknown' : result.isTor ? 'Detected' : 'No'], ['Datacenter', result.isDatacenter == null ? 'Unknown' : result.isDatacenter ? 'Yes' : 'No'], ['Mobile', result.isMobile == null ? 'Unknown' : result.isMobile ? 'Yes' : 'No'], ['Abuse flag', result.isAbuser == null ? 'Unknown' : result.isAbuser ? 'Present' : 'No']];
 }
 
 function renderStunResults(parent, stun) {
@@ -461,6 +472,7 @@ async function runAdvanced(force = false) {
       text(row.body, noConsensus ? 'No authoritative public IP was selected. Review the source votes below.' : 'No public IP was confirmed for this family.', 'card-detail');
     }
     renderIpProviderEvidence(row.body, entry);
+    if (ip && entry.geo) renderGeoIpEvidence(row.body, entry.geo);
   });
 
   const tlsAvailable = ['complete', 'partial'].includes(tlsFingerprint.status);

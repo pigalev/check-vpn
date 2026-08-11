@@ -1,17 +1,25 @@
 function finding(id, severity, summary, details, sources = []) { return { id, severity, category: 'network', summary, details, sources }; }
 
+function authoritativeAddress(result) {
+  if (!result?.address) return null;
+  if (!result.confidence) return result.address;
+  return ['strong', 'partial'].includes(result.confidence) ? result.address : null;
+}
+
 export function assessAddressFamilies({ ipv4, ipv6, webrtc }) {
   const findings = [];
-  const httpAddresses = [ipv4?.address, ipv6?.address].filter(Boolean);
+  const ipv4Address = authoritativeAddress(ipv4);
+  const ipv6Address = authoritativeAddress(ipv6);
+  const httpAddresses = [ipv4Address, ipv6Address].filter(Boolean);
   const publicRtc = webrtc?.publicAddresses ?? [];
   for (const address of publicRtc) {
-    if (httpAddresses.length && !httpAddresses.includes(address)) findings.push(finding('webrtc-public-mismatch', 'leak', 'WebRTC exposed a different public address', `${address} was not observed by HTTP IP checks.`, ['webrtc', 'http']));
+    if (httpAddresses.length && !httpAddresses.includes(address)) findings.push(finding('webrtc-public-mismatch', 'leak', 'WebRTC exposed a different public address', `${address} was not observed by authoritative HTTP IP checks.`, ['webrtc', 'http']));
   }
-  if (!ipv6?.address) {
-    findings.push(finding('ipv6-unavailable', 'info', 'No IPv6 connectivity detected', 'No public IPv6 address was observed.', ['ipv6']));
+  if (!ipv6Address) {
+    if (ipv6?.confidence !== 'no-consensus') findings.push(finding('ipv6-unavailable', 'info', 'No authoritative IPv6 connectivity detected', 'No authoritative public IPv6 address was established.', ['ipv6']));
     return findings;
   }
-  if (!ipv4?.address) return findings;
+  if (!ipv4Address) return findings;
   const g4 = ipv4.geo ?? {};
   const g6 = ipv6.geo ?? {};
   const asnDifferent = Boolean(g4.asn && g6.asn && g4.asn !== g6.asn);

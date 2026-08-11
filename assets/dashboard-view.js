@@ -1,5 +1,7 @@
 function usableGeo(geo) {
-  return geo && ['complete', 'partial'].includes(geo.status);
+  return geo
+    && ['complete', 'partial'].includes(geo.status)
+    && Boolean(geo.countryCode || geo.country || geo.region || geo.city);
 }
 
 function reserveUnavailable(ip) {
@@ -33,6 +35,15 @@ function authoritativeAddress(ip) {
   return ['strong', 'partial'].includes(ip.confidence) ? ip.address : null;
 }
 
+function geoDisagrees(geo) {
+  const agreement = geo?.agreement;
+  if (!agreement) return false;
+  if (agreement.countryState || agreement.locationState) {
+    return agreement.countryState === 'disagree' || agreement.locationState === 'disagree';
+  }
+  return agreement.countryAgree === false || agreement.locationAgree === false;
+}
+
 function ipEntry(ip, fallbackFamily) {
   const family = ip?.family ?? fallbackFamily;
   if (!ip?.address) {
@@ -47,6 +58,7 @@ function ipEntry(ip, fallbackFamily) {
       state,
       sourceText: sourceText(ip),
       locationState: 'none',
+      locationDisagreement: false,
       location: null,
       network: null
     };
@@ -59,6 +71,7 @@ function ipEntry(ip, fallbackFamily) {
     state: ip.ipFinal === false ? 'detected' : 'complete',
     sourceText: sourceText(ip),
     locationState: geo ? 'available' : ip.geoPending ? 'locating' : 'unavailable',
+    locationDisagreement: geo ? geoDisagrees(geo) : false,
     location: geo ? {
       countryCode: geo.countryCode,
       country: geo.country,

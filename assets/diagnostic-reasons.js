@@ -54,13 +54,19 @@ function slug(code) {
   return code.toLowerCase().replaceAll('_','-');
 }
 
+function stableId(code, context) {
+  if (code === 'IP_NO_CONSENSUS' && context.family) return `ipv${context.family}-no-consensus`;
+  if (code === 'GEO_COUNTRY_DISAGREEMENT' && context.family) return `ipv${context.family}-geo-country-disagreement`;
+  const familySuffix = context.family ? `-v${context.family}` : '';
+  return `${slug(code)}${familySuffix}`;
+}
+
 export function reason(code, context = {}) {
   const definition = definitions[code];
   if (!definition) throw new Error(`Unknown diagnostic reason code: ${code}`);
-  const familySuffix = context.family ? `-v${context.family}` : '';
   return {
     code,
-    id: `${slug(code)}${familySuffix}`,
+    id: stableId(code, context),
     severity: definition.severity,
     category: definition.category,
     summary: definition.summary(context),

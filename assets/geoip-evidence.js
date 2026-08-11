@@ -1,13 +1,11 @@
+import { buildCountryAliases, countryEvidenceKey } from './geoip-country.js';
+
 function clean(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function normalized(value) {
   return clean(value)?.toLowerCase() ?? null;
-}
-
-function countryKey(value) {
-  return normalized(value?.countryCode ?? value?.country);
 }
 
 function locationKey(value) {
@@ -33,13 +31,14 @@ function sourceIdentity(source = {}) {
 }
 
 export function buildGeoIpEvidence(result = {}) {
-  const selectedCountryKey = countryKey(result);
-  const selectedLocationKey = locationKey(result);
   const sources = Array.isArray(result.sources) ? result.sources : [];
+  const aliases = buildCountryAliases([result, ...sources]);
+  const selectedCountryKey = countryEvidenceKey(result, aliases);
+  const selectedLocationKey = locationKey(result);
 
   const rows = sources.map((source) => {
     const identity = sourceIdentity(source);
-    const sourceCountryKey = countryKey(source);
+    const sourceCountryKey = countryEvidenceKey(source, aliases);
     const sourceLocationKey = locationKey(source);
     return {
       ...identity,

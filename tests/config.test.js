@@ -14,8 +14,12 @@ test('network endpoints and timeouts are configured', () => {
   assert.match(networkConfig.ipv4Endpoint, /^https:\/\//);
   assert.match(networkConfig.ipv6Endpoint, /^https:\/\//);
   assert.ok(Array.isArray(networkConfig.geoIpProviders));
-  assert.equal(networkConfig.geoIpProviders.length, 4);
-  assert.deepEqual(networkConfig.geoIpProviders.map((provider) => provider.id), ['ipapi', 'ipwhois', 'freeipapi', 'ipapiis']);
+  assert.equal(networkConfig.geoIpProviders.length, 5);
+  assert.deepEqual(networkConfig.geoIpProviders.map((provider) => provider.id), ['ipapi', 'ipwhois', 'freeipapi', 'ipapiis', 'sypex-ru']);
+  const sypex = networkConfig.geoIpProviders.find((provider) => provider.id === 'sypex-ru');
+  assert.equal(sypex.kind, 'sypex');
+  assert.deepEqual(sypex.families, [4]);
+  assert.equal(sypex.urlTemplate, 'https://ru.sxgeo.city/json/{ip}');
   assert.ok(networkConfig.stunUrls.every((url) => url.startsWith('stun:')));
   assert.equal(networkConfig.coreIpTimeoutMs, 3200);
   assert.ok(networkConfig.requestTimeoutMs >= 3000);

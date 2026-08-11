@@ -154,7 +154,21 @@ function connectionRowValue(entry) {
 }
 
 function noticeText(notice) {
-  return notice?.summary?.replace(/^IPv\d+\s+/, '') ?? null;
+  return (notice?.shortSummary ?? notice?.summary)?.replace(/^IPv\d+\s+/, '') ?? null;
+}
+
+function ptrResolverSummary(ptr) {
+  const agreement = ptr?.agreement;
+  if (!agreement) return 'Unavailable';
+  const reached = agreement.reached ?? agreement.available ?? 0;
+  const total = agreement.total ?? 0;
+  const records = agreement.recordsAvailable ?? agreement.recordSources ?? 0;
+  if (agreement.state === 'unavailable') return `0/${total} resolvers reached · unavailable`;
+  if (agreement.state === 'no-record') return `${reached}/${total} resolvers reached · PTR record not found`;
+  if (agreement.state === 'single-source') return `${records}/${total} resolver returned a PTR record · single source`;
+  if (agreement.state === 'agree') return `${records}/${total} PTR sources · agree`;
+  if (agreement.state === 'disagree') return `${records}/${total} PTR sources · disagree`;
+  return `${reached}/${total} resolvers reached`;
 }
 
 function renderConnection(ipv4, ipv6, assessment = currentReport?.assessment ?? null) {
@@ -467,7 +481,7 @@ async function runAdvanced(force = false) {
     });
     if (ip) {
       text(row.body, ip, 'card-value'); rows(row.body, intelligenceRows(intel));
-      rows(row.body, [['Reverse DNS', ptr?.names?.join(', ') || (ptr?.status === 'complete' ? 'No PTR record' : 'Unavailable')], ['PTR resolvers', `${ptr?.agreement?.available ?? 0}/${ptr?.agreement?.total ?? 0}${ptr?.agreement?.agree ? ' · agree' : ' · differ'}`]]);
+      rows(row.body, [['Reverse DNS', ptr?.names?.join(', ') || (ptr?.status === 'complete' ? 'No PTR record' : 'Unavailable')], ['PTR resolvers', ptrResolverSummary(ptr)]]);
     } else {
       text(row.body, noConsensus ? 'No authoritative public IP was selected. Review the source votes below.' : 'No public IP was confirmed for this family.', 'card-detail');
     }

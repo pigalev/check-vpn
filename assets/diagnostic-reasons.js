@@ -82,9 +82,9 @@ export function reasonForGeoState({ family, countryState, locationState, countri
   if (countryState === 'disagree') return [reason('GEO_COUNTRY_DISAGREEMENT', { family, countries })];
 
   const reasons = [];
-  if (countryState === 'single-source') reasons.push(reason('GEO_COUNTRY_SINGLE_SOURCE', { family }));
   if (locationState === 'disagree') reasons.push(reason('GEO_LOCATION_DISAGREEMENT', { family, locations }));
-  else if (locationState === 'single-source') reasons.push(reason('GEO_LOCATION_SINGLE_SOURCE', { family }));
+  if (countryState === 'single-source') reasons.push(reason('GEO_COUNTRY_SINGLE_SOURCE', { family }));
+  if (locationState === 'single-source') reasons.push(reason('GEO_LOCATION_SINGLE_SOURCE', { family }));
   return reasons;
 }
 

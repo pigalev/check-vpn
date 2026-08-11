@@ -57,17 +57,32 @@ export function buildGeoIpEvidence(result = {}) {
     };
   });
 
-  const completeCount = rows.filter((row) => row.status === 'complete').length;
+  const reached = rows.filter((row) => row.status === 'complete').length;
   const selectedLocation = [clean(result.city), clean(result.region)].filter(Boolean).join(', ') || null;
+  const countryVote = result.votes?.country ?? null;
+  const locationVote = result.votes?.location ?? null;
+  const timezoneVote = result.votes?.timezone ?? null;
+  const usableCountry = countryVote?.usable ?? rows.filter((row) => row.status === 'complete' && row.countryRelation !== 'missing').length;
+  const usableLocation = locationVote?.usable ?? rows.filter((row) => row.status === 'complete' && row.locationRelation !== 'missing').length;
+  const usableTimezone = timezoneVote?.usable ?? rows.filter((row) => row.status === 'complete' && row.timezone).length;
 
   return {
     selectedIp: clean(result.ip),
     selectedCountry: clean(result.country) ?? clean(result.countryCode),
     selectedLocation,
-    responded: result.agreement?.available ?? completeCount,
+    selectedTimezone: clean(result.timezone),
+    reached,
+    responded: reached,
     total: result.agreement?.total ?? rows.length,
-    countryState: result.agreement?.countryState ?? 'unavailable',
-    locationState: result.agreement?.locationState ?? 'unavailable',
+    usableCountry,
+    usableLocation,
+    usableTimezone,
+    countryVote,
+    locationVote,
+    timezoneVote,
+    countryState: countryVote?.state ?? result.agreement?.countryState ?? 'unavailable',
+    locationState: locationVote?.state ?? result.agreement?.locationState ?? 'unavailable',
+    timezoneState: timezoneVote?.state ?? 'unavailable',
     rows
   };
 }

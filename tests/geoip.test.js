@@ -65,6 +65,20 @@ test('provider failure preserves the expected IP', async () => {
   assert.equal(result.source.id, 'ipapi');
 });
 
+test('GeoIP provider lookup records deterministic latency', async () => {
+  const samples = [1000, 1042];
+  const now = () => samples.shift();
+  const fetchImpl = async () => ({
+    ok:true,
+    json:async()=>({ country_code:'DE', country_name:'Germany', region:'Hesse', city:'Frankfurt am Main' })
+  });
+  const result = await runGeoIpProviderLookup({
+    ip:'203.0.113.10', provider:providers[0], timeoutMs:100, fetchImpl, now
+  });
+  assert.equal(result.status, 'complete');
+  assert.equal(result.latencyMs, 42);
+});
+
 test('zero usable countries is unavailable, not disagreement', async () => {
   const fetchImpl = async () => { throw new TypeError('Failed to fetch'); };
   const result = await runGeoIpConsensus({ ip:'94.25.174.96', providers, timeoutMs:50, fetchImpl });

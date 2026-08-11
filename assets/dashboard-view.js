@@ -1,13 +1,16 @@
 import { reason, reasonForGeoState } from './diagnostic-reasons.js';
 
 function usableGeo(geo) {
-  return geo
-    && ['complete', 'partial'].includes(geo.status)
-    && Boolean(geo.countryCode || geo.country || geo.region || geo.city);
+  if (!geo || !['complete', 'partial'].includes(geo.status)) return false;
+  if (geo.countryCode || geo.country || geo.region || geo.city) return true;
+  return ['country','location','timezone'].some((field) => (geo.votes?.[field]?.usable ?? 0) > 0);
 }
 
-function reserveUnavailable(ip) {
-  return Boolean(ip?.reserve?.used) && (ip.reserve.sources ?? []).every((source) => source?.status !== 'complete');
+function reserveText(ip) {
+  if (ip?.reserve?.contributed) return 'reserve contributed';
+  if (ip?.reserve?.attempted ?? ip?.reserve?.used) return 'reserve attempted';
+  if (ip?.reserve?.notNeeded) return 'reserve not needed';
+  return null;
 }
 
 function sourceText(ip) {
@@ -19,16 +22,15 @@ function sourceText(ip) {
   const selectedVotes = ip.agreement.selectedVotes ?? (ip.address ? (ip.agreement.counts?.[ip.address] ?? available) : 0);
   const primaryAvailable = ip.primary?.available ?? available;
   const primaryTotal = ip.primary?.total ?? ip.agreement.total ?? 0;
+  const reserve = reserveText(ip);
 
   if (confidence === 'strong') {
-    return ip.reserve?.used
-      ? `Strong consensus · reserve used · ${selectedVotes}/${available} agree`
-      : `Strong consensus · ${primaryAvailable}/${primaryTotal} primary responded · ${selectedVotes} agree`;
+    return `Strong consensus · ${primaryAvailable}/${primaryTotal} primary responded · ${selectedVotes}/${available} agree${reserve ? ` · ${reserve}` : ''}`;
   }
   if (confidence === 'partial') {
-    return `Partial · ${selectedVotes || available} sources agree${reserveUnavailable(ip) ? ' · reserve unavailable' : ''}`;
+    return `Partial · ${selectedVotes || available} sources agree${reserve ? ` · ${reserve}` : ''}`;
   }
-  return `${available}/${ip.agreement.total ?? 0} sources${ip.agreement.agree ? ' · agree' : ' · differ'}`;
+  return `${available}/${ip.agreement.total ?? 0} sources${ip.agreement.agree ? ' · agree' : ' · differ'}${reserve ? ` · ${reserve}` : ''}`;
 }
 
 function authoritativeAddress(ip) {
@@ -39,6 +41,31 @@ function authoritativeAddress(ip) {
 
 function distinct(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function differenceCount(vote) {
+  if (!vote?.usable || !vote?.winnerVotes) return 0;
+  return Math.max(0, vote.usable - vote.winnerVotes);
+}
+
+function majoritySummary(label, vote) {
+  const differs = differenceCount(vote);
+  return `${label}: ${vote.winnerLabel} ${vote.winnerVotes}/${vote.usable}${differs ? ` · ${differs} provider${differs === 1 ? '' : 's'} differ${differs === 1 ? 's' : ''}` : ''}`;
+}
+
+function withShortSummary(notice, geo) {
+  if (!notice) return null;
+  const country = geo?.votes?.country;
+  const location = geo?.votes?.location;
+  if (notice.code === 'GEO_COUNTRY_DISAGREEMENT') {
+    if (country?.state === 'majority') return { ...notice, shortSummary:majoritySummary('GeoIP majority', country) };
+    if (country?.state === 'unresolved') return { ...notice, shortSummary:'GeoIP country unresolved' };
+  }
+  if (notice.code === 'GEO_LOCATION_DISAGREEMENT') {
+    if (location?.state === 'majority') return { ...notice, shortSummary:majoritySummary('GeoIP location majority', location) };
+    if (location?.state === 'unresolved') return { ...notice, shortSummary:'GeoIP location unresolved' };
+  }
+  return notice;
 }
 
 function geoNoticeFor(ip, family, geo) {
@@ -52,13 +79,14 @@ function geoNoticeFor(ip, family, geo) {
   const successful = (geo.sources ?? []).filter((source) => source?.status === 'complete');
   const countries = distinct(successful.map((source) => source.country ?? source.countryCode));
   const locations = distinct(successful.map((source) => [source.city, source.region].filter(Boolean).join(', ')));
-  return reasonForGeoState({
+  const notice = reasonForGeoState({
     family,
     countryState:agreement.countryState ?? null,
     locationState:agreement.locationState ?? null,
     countries,
     locations
   })[0] ?? null;
+  return withShortSummary(notice, geo);
 }
 
 function ipEntry(ip, fallbackFamily) {

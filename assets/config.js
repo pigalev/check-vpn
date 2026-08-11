@@ -63,16 +63,10 @@ const coreIpProviderGroups = {
 
 const reserveIpProviderGroups = {
   4: Object.freeze([
-    group('ippubblico4', 'ippubblico', 'IPPubblico', 4, 'reserve', [endpoint('ippubblico4-http', 'text', 'https://ipv4.ippubblico.org/')], {
-      enabled: false,
-      disabledReason: 'Browser CORS unavailable'
-    })
+    group('ippubblico4', 'ippubblico', 'IPPubblico', 4, 'reserve', [endpoint('ippubblico4-http', 'text', 'https://ipv4.ippubblico.org/')])
   ]),
   6: Object.freeze([
-    group('ippubblico6', 'ippubblico', 'IPPubblico', 6, 'reserve', [endpoint('ippubblico6-http', 'text', 'https://ipv6.ippubblico.org/')], {
-      enabled: false,
-      disabledReason: 'Browser CORS unavailable'
-    })
+    group('ippubblico6', 'ippubblico', 'IPPubblico', 6, 'reserve', [endpoint('ippubblico6-http', 'text', 'https://ipv6.ippubblico.org/')])
   ])
 };
 

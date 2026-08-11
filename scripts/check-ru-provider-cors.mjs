@@ -1,3 +1,4 @@
+// One-shot activation helper. Third-party reachability is intentionally not part of permanent CI.
 const originArg = process.argv.find((arg) => arg.startsWith('--origin='));
 const origin = originArg?.slice('--origin='.length) || 'https://pigalev.github.io';
 

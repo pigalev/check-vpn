@@ -9,6 +9,14 @@ test('core imports progressive IP and GeoIP runners', () => {
   assert.match(app, /runGeoIpConsensusProgressive/);
 });
 
+test('core uses broad primary plus conditional reserve groups', () => {
+  assert.match(app, /primaryGroups:\s*networkConfig\.coreIpProviderGroups\[4\]/);
+  assert.match(app, /reserveGroups:\s*networkConfig\.reserveIpProviderGroups\[4\]/);
+  assert.match(app, /primaryGroups:\s*networkConfig\.coreIpProviderGroups\[6\]/);
+  assert.match(app, /reserveGroups:\s*networkConfig\.reserveIpProviderGroups\[6\]/);
+  assert.doesNotMatch(app, /networkConfig\.ipProviders/);
+});
+
 test('core no longer waits for one Promise.all of IP4 IP6 and WebRTC before rendering', () => {
   assert.doesNotMatch(app, /const \[r4, r6, webrtc\] = await Promise\.all\(\[/);
 });
@@ -33,6 +41,12 @@ test('late first GeoIP result preserves completed IP state instead of reverting 
   assert.match(app, /finalIpByFamily/);
   assert.match(app, /const finalIp = finalIpByFamily\[family\]/);
   assert.match(app, /ipFinal:\s*Boolean\(finalIp\)/);
+});
+
+test('final no-consensus clears provisional address and skips final GeoIP', () => {
+  assert.match(app, /displayedAddress\[family\]\s*=\s*result\.address\s*\?\?\s*null/);
+  assert.match(app, /if\s*\(!result\.address\)\s*\{/);
+  assert.match(app, /geo:\s*null,\s*ipFinal:\s*true,\s*geoPending:\s*false,\s*geoFinal:\s*true/);
 });
 
 test('final report is built from completed family consensus rather than provisional values', () => {

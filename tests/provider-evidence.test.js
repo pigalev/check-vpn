@@ -9,7 +9,7 @@ function baseResult(overrides = {}) {
     address:'128.71.33.91',
     agreement:{ available:5,total:5,agree:false,counts:{'128.71.33.91':4,'128.71.35.12':1},selectedVotes:4,winningShare:0.8 },
     primary:{ available:5,total:5,sources:[] },
-    reserve:{ used:false,sources:[{id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,attempts:[]}] },
+    reserve:{ used:false,sources:[{id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,latencyMs:0,error:'Consensus already guaranteed',attempts:[]}] },
     sources:[],
     ...overrides
   };
@@ -21,7 +21,7 @@ test('strong majority reports one differing group without counting it unavailabl
     {id:'b',group:'b',label:'ident.me',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:241,attempts:[]},
     {id:'c',group:'c',label:'SeeIP',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:260,attempts:[]},
     {id:'d',group:'d',label:'icanhazip',tier:'primary',status:'complete',address:'128.71.33.91',latencyMs:300,attempts:[]},
-    {id:'e',group:'e',label:'MyIP',tier:'primary',status:'complete',address:'128.71.35.12',latencyMs:390,attempts:[]}
+    {id:'e',group:'e',label:'IP.SB',tier:'primary',status:'complete',address:'128.71.35.12',latencyMs:390,attempts:[]}
   ];
   const result = baseResult({ primary:{available:5,total:5,sources:primary}, sources:[...primary, ...baseResult().reserve.sources] });
   const view = buildIpProviderEvidence(result);
@@ -31,11 +31,14 @@ test('strong majority reports one differing group without counting it unavailabl
   assert.match(view.summary, /Strong consensus/);
 });
 
-test('reserve not needed stays visible and is excluded from vote totals', () => {
-  const reserve = {id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,attempts:[]};
+test('early-aborted group is not-needed with an explicit reason and no fake latency', () => {
+  const reserve = {id:'reserve',group:'ippubblico',label:'IPPubblico',tier:'reserve',status:'not-needed',address:null,latencyMs:0,error:'Consensus already guaranteed',attempts:[]};
   const view = buildIpProviderEvidence(baseResult({ reserve:{used:false,sources:[reserve]}, sources:[reserve] }));
+  const row = view.reserve.rows[0];
   assert.equal(view.reserve.used, false);
-  assert.equal(view.reserve.rows[0].relation, 'not-needed');
+  assert.equal(row.relation, 'not-needed');
+  assert.equal(row.error, 'Consensus already guaranteed');
+  assert.equal(row.latencyMs, null);
   assert.equal(view.successful, 5);
   assert.equal(view.total, 5);
 });
@@ -81,7 +84,7 @@ test('no-consensus has no selected address and successful rows are observed, not
 });
 
 test('unavailable group is not disagreement', () => {
-  const source = {id:'a',group:'a',label:'A',tier:'primary',status:'unavailable',address:null,latencyMs:6001,error:'timeout',attempts:[]};
+  const source = {id:'a',group:'a',label:'A',tier:'primary',status:'unavailable',address:null,latencyMs:3201,error:'Fetch is aborted',attempts:[]};
   const result = baseResult({
     confidence:'partial', address:'128.71.33.91', agreement:{available:2,total:3,agree:true,counts:{'128.71.33.91':2},selectedVotes:2,winningShare:1},
     primary:{available:2,total:3,sources:[source]}, sources:[source]

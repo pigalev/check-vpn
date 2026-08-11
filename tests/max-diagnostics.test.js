@@ -12,20 +12,27 @@ import { summarizeCandidates } from '../assets/webrtc-test.js';
 function responseJson(payload) { return { ok: true, status: 200, json: async () => payload }; }
 function responseText(payload) { return { ok: true, status: 200, text: async () => payload }; }
 
-test('IP consensus survives failures and selects majority address', async () => {
+test('IP consensus survives a failure and selects a strong majority address', async () => {
   const providers = [
     { id: 'a', label: 'A', kind: 'ipify', url: 'https://a.test' },
     { id: 'b', label: 'B', kind: 'ipapi', url: 'https://b.test' },
-    { id: 'c', label: 'C', kind: 'text', url: 'https://c.test' }
+    { id: 'c', label: 'C', kind: 'text', url: 'https://c.test' },
+    { id: 'd', label: 'D', kind: 'text', url: 'https://d.test' },
+    { id: 'e', label: 'E', kind: 'text', url: 'https://e.test' }
   ];
   const fetchImpl = async (url) => {
     if (url.includes('a.test')) return responseJson({ ip: '203.0.113.10' });
     if (url.includes('b.test')) return responseJson({ ip: '203.0.113.10' });
-    return responseText('198.51.100.4\n');
+    if (url.includes('c.test')) return responseText('203.0.113.10\n');
+    if (url.includes('d.test')) return responseText('198.51.100.4\n');
+    throw new TypeError('offline');
   };
   const result = await runIpConsensus({ family: 4, providers, timeoutMs: 100, fetchImpl });
+  assert.equal(result.confidence, 'strong');
   assert.equal(result.address, '203.0.113.10');
-  assert.equal(result.agreement.available, 3);
+  assert.equal(result.agreement.available, 4);
+  assert.equal(result.agreement.selectedVotes, 3);
+  assert.equal(result.agreement.winningShare, 3 / 4);
   assert.equal(result.agreement.agree, false);
 });
 

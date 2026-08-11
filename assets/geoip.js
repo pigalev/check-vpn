@@ -151,8 +151,18 @@ function voteValue(results, field) {
   return winner?.value ?? null;
 }
 
-function distinctNormalized(values) {
-  return new Set(values.filter(Boolean).map((value) => String(value).trim().toLowerCase()));
+function evidenceState(values) {
+  const normalized = values
+    .filter(Boolean)
+    .map((value) => String(value).trim().toLowerCase())
+    .filter(Boolean);
+  if (normalized.length === 0) return 'unavailable';
+  if (normalized.length === 1) return 'single-source';
+  return new Set(normalized).size === 1 ? 'agree' : 'disagree';
+}
+
+function legacyAgree(state) {
+  return state === 'agree' ? true : state === 'disagree' ? false : null;
 }
 
 function locationTuple(result) {
@@ -173,10 +183,26 @@ function metadataTuple(result) {
   ].map((value) => String(value).trim().toLowerCase()).join('|');
 }
 
+function agreementFor(successful, total) {
+  const countryCodes = successful.map((result) => result.countryCode).filter(Boolean);
+  const locations = successful.map(locationTuple).filter(Boolean);
+  const countryState = evidenceState(countryCodes);
+  const locationState = evidenceState(locations);
+  return {
+    available: successful.length,
+    total,
+    countryState,
+    locationState,
+    countryAgree: legacyAgree(countryState),
+    locationAgree: legacyAgree(locationState)
+  };
+}
+
 function buildGeoIpConsensusResult(ip, providers, sources) {
   const successful = sources.filter((result) => result.status === 'complete');
   const available = successful.length;
   const total = providers.length;
+  const agreement = agreementFor(successful, total);
 
   if (available === 0) {
     return {
@@ -189,19 +215,15 @@ function buildGeoIpConsensusResult(ip, providers, sources) {
       asn: null,
       org: null,
       timezone: null,
-      agreement: { available: 0, total, countryAgree: false, locationAgree: false },
+      agreement,
       sources,
       differences: [],
       error: 'Location unavailable.'
     };
   }
 
-  const countryCodes = successful.map((result) => result.countryCode).filter(Boolean);
-  const locations = successful.map(locationTuple).filter(Boolean);
   const metadata = successful.map(metadataTuple);
-  const countryAgree = distinctNormalized(countryCodes).size <= 1;
-  const locationAgree = distinctNormalized(locations).size <= 1;
-  const metadataAgree = distinctNormalized(metadata).size <= 1;
+  const metadataAgree = new Set(metadata).size <= 1;
   const differences = metadataAgree
     ? []
     : successful.map((result) => ({
@@ -225,7 +247,7 @@ function buildGeoIpConsensusResult(ip, providers, sources) {
     asn: voteValue(successful, 'asn'),
     org: voteValue(successful, 'org'),
     timezone: voteValue(successful, 'timezone'),
-    agreement: { available, total, countryAgree, locationAgree },
+    agreement,
     sources,
     differences,
     error: null
@@ -233,7 +255,7 @@ function buildGeoIpConsensusResult(ip, providers, sources) {
 }
 
 export function hasUsableGeoLocation(result) {
-  return result?.status === 'complete' && Boolean(result.countryCode || result.country || result.region || result.city);
+  return ['complete', 'partial'].includes(result?.status) && Boolean(result.countryCode || result.country || result.region || result.city);
 }
 
 export async function runGeoIpConsensusProgressive({ ip, providers, timeoutMs, fetchImpl = fetch, onFirstUsable = null }) {
@@ -253,7 +275,6 @@ export function runGeoIpConsensus(args) {
   return runGeoIpConsensusProgressive(args);
 }
 
-// Backward-compatible single-provider wrapper for callers outside the current UI.
 export async function runGeoIpLookup({ ip, urlTemplate, timeoutMs, fetchImpl = fetch }) {
   return runGeoIpProviderLookup({
     ip,

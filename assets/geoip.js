@@ -254,13 +254,22 @@ function buildGeoIpConsensusResult(ip, providers, sources) {
   };
 }
 
+function ipFamily(ip) {
+  return typeof ip === 'string' && ip.includes(':') ? 6 : 4;
+}
+
+function providerSupportsIp(provider, ip) {
+  return !Array.isArray(provider?.families) || provider.families.includes(ipFamily(ip));
+}
+
 export function hasUsableGeoLocation(result) {
   return ['complete', 'partial'].includes(result?.status) && Boolean(result.countryCode || result.country || result.region || result.city);
 }
 
 export async function runGeoIpConsensusProgressive({ ip, providers, timeoutMs, fetchImpl = fetch, onFirstUsable = null }) {
+  const activeProviders = (providers ?? []).filter((provider) => providerSupportsIp(provider, ip));
   let emitted = false;
-  const promises = providers.map(async (provider) => {
+  const promises = activeProviders.map(async (provider) => {
     const result = await runGeoIpProviderLookup({ ip, provider, timeoutMs, fetchImpl });
     if (!emitted && hasUsableGeoLocation(result)) {
       emitted = true;
@@ -268,7 +277,7 @@ export async function runGeoIpConsensusProgressive({ ip, providers, timeoutMs, f
     }
     return result;
   });
-  return buildGeoIpConsensusResult(ip, providers, await Promise.all(promises));
+  return buildGeoIpConsensusResult(ip, activeProviders, await Promise.all(promises));
 }
 
 export function runGeoIpConsensus(args) {

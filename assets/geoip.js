@@ -119,18 +119,29 @@ export function normalizeGeoIp(payload, expectedIp, kind = 'ipapi', source = {})
   };
 }
 
-export async function runGeoIpProviderLookup({ ip, provider, timeoutMs, fetchImpl = fetch }) {
+export async function runGeoIpProviderLookup({
+  ip,
+  provider,
+  timeoutMs,
+  fetchImpl = fetch,
+  now = () => performance.now?.() ?? Date.now()
+}) {
+  const startedAt = now();
+  const elapsed = () => Math.max(0, Math.round(now() - startedAt));
   try {
     const payload = await fetchJsonWithTimeout(buildGeoIpUrl(provider.urlTemplate, ip), { timeoutMs, fetchImpl });
-    return normalizeGeoIp(payload, ip, provider.kind, provider);
+    return { ...normalizeGeoIp(payload, ip, provider.kind, provider), latencyMs:elapsed() };
   } catch (error) {
     const unavailable = error?.name === 'AbortError' || error instanceof TypeError;
-    return emptyResult(
-      ip,
-      unavailable ? 'unavailable' : 'error',
-      unavailable ? 'Location unavailable.' : 'Location lookup failed.',
-      provider
-    );
+    return {
+      ...emptyResult(
+        ip,
+        unavailable ? 'unavailable' : 'error',
+        unavailable ? 'Location unavailable.' : 'Location lookup failed.',
+        provider
+      ),
+      latencyMs:elapsed()
+    };
   }
 }
 

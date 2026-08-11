@@ -16,9 +16,17 @@ export function countVotes(sources = []) {
   };
 }
 
+export function isStrongVote(vote) {
+  return vote.selectedVotes >= 3 && vote.winningShare >= (2 / 3);
+}
+
 export function canGuaranteeStrong({ sources = [], pendingCount = 0 }) {
   const vote = countVotes(sources);
   if (vote.selectedVotes < 3) return false;
   const worstCaseSuccessful = vote.successful.length + Math.max(0, pendingCount);
-  return worstCaseSuccessful > 0 && (vote.selectedVotes / worstCaseSuccessful) >= (2 / 3);
+  const worstCaseVote = {
+    ...vote,
+    winningShare: worstCaseSuccessful ? vote.selectedVotes / worstCaseSuccessful : 0
+  };
+  return isStrongVote(worstCaseVote);
 }

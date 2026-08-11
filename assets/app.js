@@ -339,14 +339,14 @@ async function runCore() {
     family: 4,
     primaryGroups: networkConfig.coreIpProviderGroups[4],
     reserveGroups: networkConfig.reserveIpProviderGroups[4],
-    timeoutMs: networkConfig.requestTimeoutMs,
+    timeoutMs: networkConfig.coreIpTimeoutMs,
     onFirstValid: (source) => handleFirstIp(4, source)
   });
   const ipv6Promise = runIpConsensusProgressive({
     family: 6,
     primaryGroups: networkConfig.coreIpProviderGroups[6],
     reserveGroups: networkConfig.reserveIpProviderGroups[6],
-    timeoutMs: networkConfig.requestTimeoutMs,
+    timeoutMs: networkConfig.coreIpTimeoutMs,
     onFirstValid: (source) => handleFirstIp(6, source)
   });
   const webrtcPromise = runWebRtcTest({ stunUrls: networkConfig.stunUrls, timeoutMs: networkConfig.webrtcTimeoutMs }).then((result) => {

@@ -18,10 +18,28 @@ function extractAddress(payload, kind) {
   return payload.ip ?? payload.address ?? null;
 }
 
-export async function runIpEndpoint({ endpoint, family, timeoutMs, fetchImpl = fetch, now = () => performance.now?.() ?? Date.now() }) {
+function errorMessage(error) {
+  if (typeof error === 'string') return error;
+  return error?.message ?? 'Request failed';
+}
+
+export async function runIpEndpoint({
+  endpoint,
+  family,
+  timeoutMs,
+  fetchImpl = fetch,
+  now = () => performance.now?.() ?? Date.now(),
+  signal = null
+}) {
   const startedAt = now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+  const abortFromCaller = () => controller.abort(signal?.reason ?? new DOMException('Aborted', 'AbortError'));
+  if (signal?.aborted) abortFromCaller();
+  else signal?.addEventListener('abort', abortFromCaller, { once:true });
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('Fetch is aborted', 'AbortError')),
+    Math.max(1, timeoutMs)
+  );
   try {
     const response = await fetchImpl(endpoint.url, {
       signal: controller.signal,
@@ -45,22 +63,31 @@ export async function runIpEndpoint({ endpoint, family, timeoutMs, fetchImpl = f
       status: 'unavailable',
       address: null,
       latencyMs: Math.max(0, Math.round(now() - startedAt)),
-      error: error?.message ?? 'Request failed'
+      error: errorMessage(error)
     };
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener?.('abort', abortFromCaller);
   }
 }
 
-export async function runIpProviderGroup({ group, family, timeoutMs, fetchImpl = fetch, now = () => performance.now?.() ?? Date.now() }) {
+export async function runIpProviderGroup({
+  group,
+  family,
+  timeoutMs,
+  fetchImpl = fetch,
+  now = () => performance.now?.() ?? Date.now(),
+  signal = null
+}) {
   const startedAt = now();
   const deadline = startedAt + timeoutMs;
   const attempts = [];
 
   for (const endpoint of group?.endpoints ?? []) {
+    if (signal?.aborted) break;
     const remainingMs = Math.max(0, deadline - now());
     if (remainingMs <= 0) break;
-    const attempt = await runIpEndpoint({ endpoint, family, timeoutMs: remainingMs, fetchImpl, now });
+    const attempt = await runIpEndpoint({ endpoint, family, timeoutMs: remainingMs, fetchImpl, now, signal });
     attempts.push(attempt);
     if (attempt.status === 'complete') {
       return {
@@ -90,6 +117,6 @@ export async function runIpProviderGroup({ group, family, timeoutMs, fetchImpl =
     latencyMs: Math.max(0, Math.round(now() - startedAt)),
     endpointId: null,
     attempts,
-    error: attempts.at(-1)?.error ?? 'Request failed'
+    error: attempts.at(-1)?.error ?? (signal?.aborted ? errorMessage(signal.reason) : 'Request failed')
   };
 }

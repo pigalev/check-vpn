@@ -104,7 +104,7 @@ test('3-2 primary plus reserve can strengthen it to 4-2', async () => {
   assert.equal(result.agreement.winningShare, 4 / 6);
 });
 
-test('2-1 with exactly three successful groups is Strong under two-thirds rule', async () => {
+test('2-1 with exactly three successful groups is not Strong', async () => {
   const result = await runIpConsensus({
     family: 4,
     primaryGroups: ['a','b','c'].map((id) => group(id)),
@@ -112,8 +112,9 @@ test('2-1 with exactly three successful groups is Strong under two-thirds rule',
     timeoutMs: 100,
     fetchImpl: fixtureFetch({ a:'203.0.113.1', b:'203.0.113.1', c:'203.0.113.2' })
   });
-  assert.equal(result.confidence, 'strong');
-  assert.equal(result.address, '203.0.113.1');
+  assert.equal(result.confidence, 'no-consensus');
+  assert.equal(result.address, null);
+  assert.equal(result.agreement.selectedVotes, 2);
   assert.equal(result.agreement.winningShare, 2 / 3);
 });
 

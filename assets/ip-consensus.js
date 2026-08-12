@@ -1,5 +1,5 @@
 import { runIpProviderGroup } from './ip-provider-group.js';
-import { canGuaranteeStrong, countVotes } from './ip-consensus-race.js';
+import { canGuaranteeStrong, countVotes, isStrongVote } from './ip-consensus-race.js';
 
 function asLegacyGroup(provider, family) {
   return {
@@ -19,7 +19,7 @@ function normalizePrimaryGroups({ primaryGroups, providers, family }) {
 
 function evaluateGroupVotes(sources) {
   const vote = countVotes(sources);
-  const strong = vote.successful.length >= 3 && vote.winningShare >= (2 / 3);
+  const strong = isStrongVote(vote);
   const partial = vote.successful.length > 0 && vote.successful.length <= 2 && vote.allAgree;
   return { ...vote, strong, partial };
 }
@@ -74,7 +74,10 @@ function buildFinalResult({ family, primaryGroups, primarySources, reserveSource
 
   const observedAddresses = [...new Set(vote.successful.map((source) => source.address))];
   const primaryAvailable = primarySources.filter((source) => source.status === 'complete').length;
-  const reserveUsed = reserveSources.some((source) => ['complete', 'unavailable'].includes(source.status));
+  const reserveAttempted = reserveSources.some((source) => ['complete', 'unavailable'].includes(source.status));
+  const reserveContributed = reserveSources.some((source) => source.status === 'complete' && Boolean(source.address));
+  const reserveHasNotNeeded = reserveSources.some((source) => source.status === 'not-needed');
+  const reserveNotNeeded = reserveHasNotNeeded && reserveSources.every((source) => ['not-needed', 'disabled'].includes(source.status));
 
   return {
     status,
@@ -97,7 +100,10 @@ function buildFinalResult({ family, primaryGroups, primarySources, reserveSource
       sources: primarySources
     },
     reserve: {
-      used: reserveUsed,
+      attempted: reserveAttempted,
+      contributed: reserveContributed,
+      notNeeded: reserveNotNeeded,
+      used: reserveAttempted,
       sources: reserveSources
     },
     error: vote.successful.length ? null : `IPv${family} unavailable`

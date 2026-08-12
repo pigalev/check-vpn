@@ -29,8 +29,11 @@ function rowFor(source, selectedAddress, confidence) {
   };
 }
 
-function reserveUnavailable(result) {
-  return Boolean(result?.reserve?.used) && (result.reserve.sources ?? []).every((source) => source?.status !== 'complete');
+function reserveSummary(result) {
+  if (result?.reserve?.contributed) return 'reserve contributed';
+  if (result?.reserve?.attempted) return 'reserve attempted';
+  if (result?.reserve?.notNeeded) return 'reserve not needed';
+  return null;
 }
 
 export function buildIpProviderEvidence(result = {}) {
@@ -51,23 +54,23 @@ export function buildIpProviderEvidence(result = {}) {
   const reserveSources = result.reserve?.sources ?? (result.sources ?? []).filter((source) => source?.tier === 'reserve');
   const primaryRows = primarySources.map((source) => rowFor(source, selectedAddress, confidence));
   const reserveRows = reserveSources.map((source) => rowFor(source, selectedAddress, confidence));
+  const reserveText = reserveSummary(result);
 
   let summary;
   if (confidence === 'strong') {
-    summary = result.reserve?.used
-      ? `Strong consensus · reserve used · ${selectedVotes}/${successful} agree`
-      : `Strong consensus · ${result.primary?.available ?? successful}/${result.primary?.total ?? total} primary groups responded · ${selectedVotes} agree`;
+    const primaryText = `${result.primary?.available ?? successful}/${result.primary?.total ?? total} primary groups responded`;
+    summary = `Strong consensus · ${primaryText} · ${selectedVotes}/${successful} agree${reserveText ? ` · ${reserveText}` : ''}`;
   } else if (confidence === 'partial') {
-    summary = `Partial · ${selectedVotes || successful} sources agree${reserveUnavailable(result) ? ' · reserve unavailable' : ''}`;
+    summary = `Partial · ${selectedVotes || successful} sources agree${reserveText ? ` · ${reserveText}` : ''}`;
   } else if (confidence === 'no-consensus') {
     const observed = new Set(successfulRows.map((source) => source.address)).size;
-    summary = `No consensus · ${observed} different observed value${observed === 1 ? '' : 's'}`;
+    summary = `No consensus · ${observed} different observed value${observed === 1 ? '' : 's'}${reserveText ? ` · ${reserveText}` : ''}`;
   } else if (!successful) {
-    summary = 'Unavailable · no successful public-IP group';
+    summary = `Unavailable · no successful public-IP group${reserveText ? ` · ${reserveText}` : ''}`;
   } else if (differentValues === 0) {
-    summary = `${selectedVotes} of ${successful} successful sources agree`;
+    summary = `${selectedVotes} of ${successful} successful sources agree${reserveText ? ` · ${reserveText}` : ''}`;
   } else {
-    summary = `${selectedVotes} of ${successful} successful sources returned the selected address`;
+    summary = `${selectedVotes} of ${successful} successful sources returned the selected address${reserveText ? ` · ${reserveText}` : ''}`;
   }
 
   return {
@@ -86,6 +89,9 @@ export function buildIpProviderEvidence(result = {}) {
       rows: primaryRows
     },
     reserve: {
+      attempted: Boolean(result.reserve?.attempted ?? result.reserve?.used),
+      contributed: Boolean(result.reserve?.contributed),
+      notNeeded: Boolean(result.reserve?.notNeeded),
       used: Boolean(result.reserve?.used),
       rows: reserveRows
     },

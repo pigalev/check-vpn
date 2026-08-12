@@ -1,9 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { countVotes, canGuaranteeStrong } from '../assets/ip-consensus-race.js';
+import { countVotes, isStrongVote, canGuaranteeStrong } from '../assets/ip-consensus-race.js';
 
 const ok = (id, address) => ({ id, status:'complete', address });
 const fail = (id) => ({ id, status:'unavailable', address:null });
+
+test('Strong requires at least three votes for one address', () => {
+  assert.equal(isStrongVote(countVotes([
+    ok('a','1.1.1.1'), ok('b','1.1.1.1'), ok('c','2.2.2.2')
+  ])), false);
+  assert.equal(isStrongVote(countVotes([
+    ok('a','1.1.1.1'), ok('b','1.1.1.1'), ok('c','1.1.1.1')
+  ])), true);
+});
+
+test('Strong uses a two-thirds winner share after the minimum-vote gate', () => {
+  const matrix = [
+    { votes:['A','A','A','B'], expected:true },
+    { votes:['A','A','A','B','B'], expected:false },
+    { votes:['A','A','A','A','B','B'], expected:true }
+  ];
+  for (const [index, row] of matrix.entries()) {
+    const vote = countVotes(row.votes.map((address, i) => ok(`${index}-${i}`, address)));
+    assert.equal(isStrongVote(vote), row.expected);
+  }
+});
 
 test('4 equal responses with 2 pending are mathematically guaranteed Strong', () => {
   const sources = [1,2,3,4].map((n) => ok(`p${n}`, '31.76.17.233'));

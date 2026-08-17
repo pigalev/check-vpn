@@ -6,11 +6,8 @@ function usableGeo(geo) {
   return ['country','location','timezone'].some((field) => (geo.votes?.[field]?.usable ?? 0) > 0);
 }
 
-function reserveText(ip) {
-  if (ip?.reserve?.contributed) return 'reserve contributed';
-  if (ip?.reserve?.attempted ?? ip?.reserve?.used) return 'reserve attempted';
-  if (ip?.reserve?.notNeeded) return 'reserve not needed';
-  return null;
+function mainReserveText(ip) {
+  return ip?.reserve?.contributed ? 'reserve contributed' : null;
 }
 
 function sourceText(ip) {
@@ -20,12 +17,10 @@ function sourceText(ip) {
   if (!ip?.agreement) return ip?.address ? 'Checking…' : null;
   const available = ip.agreement.available ?? 0;
   const selectedVotes = ip.agreement.selectedVotes ?? (ip.address ? (ip.agreement.counts?.[ip.address] ?? available) : 0);
-  const primaryAvailable = ip.primary?.available ?? available;
-  const primaryTotal = ip.primary?.total ?? ip.agreement.total ?? 0;
-  const reserve = reserveText(ip);
+  const reserve = mainReserveText(ip);
 
   if (confidence === 'strong') {
-    return `Strong consensus · ${primaryAvailable}/${primaryTotal} primary responded · ${selectedVotes}/${available} agree${reserve ? ` · ${reserve}` : ''}`;
+    return `Strong consensus · ${selectedVotes}/${available} agree${reserve ? ` · ${reserve}` : ''}`;
   }
   if (confidence === 'partial') {
     return `Partial · ${selectedVotes || available} sources agree${reserve ? ` · ${reserve}` : ''}`;
